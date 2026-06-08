@@ -1,18 +1,30 @@
-# Liver Cancer AI Diagnostics
+<div align="center">
+
+# 🩺 Liver Cancer AI Diagnostics
 
 **AI-Powered Liver Cancer Diagnosis from MRI/CT Scans Using Vision-Language Models**
 
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev)
+[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch.org)
+[![100% Local](https://img.shields.io/badge/100%25_Local-Privacy_First-4CAF50?style=for-the-badge)](https://github.com/Steventanardi/liver-cancer-ai)
+
+<img src="Pictures/UIResult.png" alt="Liver Cancer AI Diagnostics UI" width="800" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-top: 15px; margin-bottom: 15px;" />
+
 > ⚠️ **Disclaimer:** This is a research prototype for an academic thesis. It is **not** a certified medical device and must **not** be used for clinical patient care. All AI outputs are decision-support only — a licensed radiologist must review and approve every report.
+
+</div>
 
 ---
 
-## Table of Contents
+## 📑 Table of Contents
 
-- [Overview](#overview)
-- [The Medical Problem](#the-medical-problem)
-- [How It Works — The Hybrid Pipeline](#how-it-works--the-hybrid-pipeline)
-- [Architecture Diagram](#architecture-diagram)
-- [Tech Stack](#tech-stack)
+- [🚀 Overview](#-overview)
+- [🔬 The Medical Problem](#-the-medical-problem)
+- [⚙️ How It Works — The Hybrid Pipeline](#️-how-it-works--the-hybrid-pipeline)
+- [🏗️ Architecture Diagram](#️-architecture-diagram)
+- [💻 Tech Stack](#-tech-stack)
 - [Project Structure](#project-structure)
 - [Data Flow — Where Comes From Where](#data-flow--where-comes-from-where)
 - [Datasets](#datasets)
@@ -29,9 +41,17 @@
 
 ---
 
-## Overview
+## 🚀 Overview
 
 This project is a **web-based AI-assisted diagnostic tool** for liver cancer detection from MRI and CT scans. It combines **specialized deep learning segmentation** (TotalSegmentator) with **vision-language model (VLM) reasoning** (MedGemma 4B via Ollama) to produce structured LI-RADS radiology reports — all running **entirely locally** so that no patient data ever leaves the machine.
+
+### ✨ Key Features
+- **100% Local & Private**: No cloud APIs. HIPAA compliant by design.
+- **Automated De-identification**: DICOM PS3.15 standard PHI stripping.
+- **GPU-Accelerated Segmentation**: Sub-second liver and lesion masking via nnU-Net.
+- **RAG-Augmented Reasoning**: Clinical guidelines (AASLD, EASL, LI-RADS) embedded into the reasoning chain.
+- **Human-in-the-Loop**: Integrated radiologist sign-off workflow with audit logging.
+- **Standards-Compliant Export**: Generate PDF reports and FHIR R4 JSON payloads.
 
 The system accepts DICOM, NIfTI, or plain image uploads, and processes them through a multi-stage pipeline:
 
