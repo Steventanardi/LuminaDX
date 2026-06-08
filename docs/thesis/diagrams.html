@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Liver Cancer AI Diagnostics — Thesis Diagrams</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    background: #fff;
+    color: #111;
+    padding: 40px 60px;
+  }
+
+  h1.page-title {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 50px;
+    letter-spacing: -0.5px;
+  }
+
+  .diagram-section {
+    margin-bottom: 80px;
+    page-break-after: always;
+  }
+
+  .diagram-title {
+    text-align: center;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 36px;
+    letter-spacing: -0.3px;
+  }
+
+  /* ─── Generic flowchart primitives ─── */
+
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .flow-row {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 40px;
+    flex-wrap: wrap;
+  }
+
+  .box {
+    border: 2px solid #111;
+    border-radius: 6px;
+    padding: 14px 20px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.5;
+    background: #fff;
+    min-width: 150px;
+    max-width: 220px;
+    position: relative;
+  }
+
+  .box.wide { max-width: 300px; min-width: 220px; }
+  .box.extra-wide { max-width: 420px; min-width: 300px; }
+  .box.compact { min-width: 120px; max-width: 170px; padding: 10px 14px; }
+
+  .box .label {
+    font-weight: 700;
+    font-size: 13px;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .box .sublabel {
+    font-weight: 400;
+    font-size: 11.5px;
+    color: #333;
+    display: block;
+  }
+
+  .box .detail {
+    font-size: 11px;
+    color: #555;
+    margin-top: 6px;
+    text-align: left;
+    line-height: 1.55;
+  }
+
+  /* ─── Arrows (vertical and horizontal) ─── */
+
+  .arrow-down {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 36px;
+    position: relative;
+  }
+
+  .arrow-down::after {
+    content: '';
+    display: block;
+    width: 2px;
+    height: 24px;
+    background: #111;
+    position: relative;
+  }
+
+  .arrow-down::before {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 8px solid #111;
+  }
+
+  .arrow-down.labeled::after { height: 18px; }
+  .arrow-down .arrow-text {
+    position: absolute;
+    top: -2px;
+    left: calc(50% + 14px);
+    font-size: 10px;
+    color: #555;
+    white-space: nowrap;
+  }
+
+  .arrow-right-inline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    position: relative;
+  }
+
+  .arrow-right-inline::after {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 2px;
+    background: #111;
+  }
+
+  .arrow-right-inline::before {
+    content: '';
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0; height: 0;
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-left: 8px solid #111;
+  }
+
+  /* ─── Section group boxes ─── */
+
+  .group-box {
+    border: 2px solid #222;
+    border-radius: 8px;
+    padding: 24px 20px 20px;
+    position: relative;
+    margin-bottom: 8px;
+    background: #fafafa;
+  }
+
+  .group-box .group-label {
+    position: absolute;
+    top: -13px;
+    left: 20px;
+    background: #fff;
+    padding: 2px 12px;
+    font-weight: 700;
+    font-size: 13px;
+    border: 2px solid #222;
+    border-radius: 4px;
+  }
+
+  /* ─── Specific layout helpers ─── */
+
+  .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; }
+  .cols-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; }
+  .cols-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 24px; }
+
+  .centered { display: flex; justify-content: center; }
+
+  .connector-h {
+    width: 100%;
+    height: 2px;
+    background: #111;
+    position: relative;
+    margin: 0 auto;
+  }
+
+  .side-by-side {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 60px;
+  }
+
+  /* ─── For the two-column AI Model Diagram ─── */
+  .dual-flow {
+    display: flex;
+    justify-content: center;
+    gap: 80px;
+    align-items: flex-start;
+  }
+
+  .dual-flow > .flow {
+    flex: 0 0 auto;
+  }
+
+  /* ─── Print tweaks ─── */
+  @media print {
+    body { padding: 20px 30px; }
+    .diagram-section { page-break-after: always; }
+  }
+
+  /* ─── Bracket connector (vertical line spanning multiple items) ─── */
+  .bracket-group {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .bracket-left {
+    width: 24px;
+    border: 2px solid #111;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    align-self: stretch;
+  }
+
+  /* Large pipeline container */
+  .pipeline {
+    max-width: 950px;
+    margin: 0 auto;
+  }
+
+  /* Separator line */
+  .sep {
+    width: 100%;
+    height: 1px;
+    background: #ddd;
+    margin: 40px 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     DIAGRAM 1: SYSTEM ARCHITECTURE
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <h2 class="diagram-title">System Architecture Diagram</h2>
+
+  <div class="pipeline">
+
+    <!-- Frontend -->
+    <div class="group-box" style="margin-bottom: 24px;">
+      <span class="group-label">Frontend (Browser — localhost:5173)</span>
+      <div style="display:flex; flex-direction:column; gap:16px; padding-top:10px;">
+        <div class="centered">
+          <div class="box wide">
+            <span class="label">React 18 + TypeScript</span>
+            <span class="sublabel">Vite 6 Dev Server · Tailwind CSS 3</span>
+          </div>
+        </div>
+        <div class="flow-row" style="gap:20px;">
+          <div class="box compact">
+            <span class="label">UploadScreen</span>
+            <span class="sublabel">Drag & Drop</span>
+          </div>
+          <div class="box compact">
+            <span class="label">PreviewScreen</span>
+            <span class="sublabel">DICOM Viewer</span>
+          </div>
+          <div class="box compact">
+            <span class="label">AnalysingScreen</span>
+            <span class="sublabel">Progress Tracker</span>
+          </div>
+          <div class="box compact">
+            <span class="label">ResultsScreen</span>
+            <span class="sublabel">Report + Overlay</span>
+          </div>
+          <div class="box compact">
+            <span class="label">ReportPDF</span>
+            <span class="sublabel">PDF / FHIR Export</span>
+          </div>
+        </div>
+        <div class="centered">
+          <div class="box">
+            <span class="label">Axios HTTP Client</span>
+            <span class="sublabel">api.ts · useAnalysis Hook</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow Frontend → Backend -->
+    <div class="centered">
+      <div class="arrow-down labeled">
+        <span class="arrow-text">REST API (JSON) + WebSocket</span>
+      </div>
+    </div>
+
+    <!-- Backend -->
+    <div class="group-box" style="margin-bottom: 24px;">
+      <span class="group-label">Backend — FastAPI (localhost:8000)</span>
+      <div style="display:flex; flex-direction:column; gap:16px; padding-top:10px;">
+
+        <div class="centered">
+          <div class="box wide">
+            <span class="label">main.py</span>
+            <span class="sublabel">FastAPI · Uvicorn · CORS · Lifespan</span>
+          </div>
+        </div>
+
+        <!-- API Routes Row -->
+        <div class="flow-row" style="gap:16px;">
+          <div class="box compact">
+            <span class="label">/api/dicom/*</span>
+            <span class="sublabel">Upload · Preview<br/>Metadata · Files</span>
+          </div>
+          <div class="box compact">
+            <span class="label">/api/analysis/*</span>
+            <span class="sublabel">Start · Status<br/>Report · Sign-off<br/>FHIR · Benchmark</span>
+          </div>
+          <div class="box compact">
+            <span class="label">/api/rag/*</span>
+            <span class="sublabel">Query · Ingest<br/>Status</span>
+          </div>
+          <div class="box compact">
+            <span class="label">/api/audit</span>
+            <span class="sublabel">Event Viewer</span>
+          </div>
+          <div class="box compact">
+            <span class="label">/health</span>
+            <span class="sublabel">Health Check</span>
+          </div>
+        </div>
+
+        <div class="centered"><div class="arrow-down"></div></div>
+
+        <!-- Core Modules Row -->
+        <div class="flow-row" style="gap:14px;">
+          <div class="box compact">
+            <span class="label">dicom_processor</span>
+            <span class="sublabel">Load · De-ID<br/>Convert · Window</span>
+          </div>
+          <div class="box compact">
+            <span class="label">segmentation</span>
+            <span class="sublabel">TotalSegmentator<br/>Liver + Lesion Masks</span>
+          </div>
+          <div class="box compact">
+            <span class="label">slice_exporter</span>
+            <span class="sublabel">PNG · Overlay<br/>Montage · Labels</span>
+          </div>
+          <div class="box compact">
+            <span class="label">radiomics_<br/>extractor</span>
+            <span class="sublabel">PyRadiomics<br/>1,000+ Features</span>
+          </div>
+          <div class="box compact">
+            <span class="label">rag_engine</span>
+            <span class="sublabel">ChromaDB<br/>LangChain</span>
+          </div>
+          <div class="box compact">
+            <span class="label">llm_client</span>
+            <span class="sublabel">Ollama VLM<br/>MedGemma 4B</span>
+          </div>
+          <div class="box compact">
+            <span class="label">audit_log</span>
+            <span class="sublabel">JSONL<br/>Append-only</span>
+          </div>
+        </div>
+
+        <div class="centered">
+          <div class="box" style="margin-top:10px;">
+            <span class="label">schemas.py (Pydantic 2.x)</span>
+            <span class="sublabel">DiagnosticReport · LesionFinding · LiRadsCategory · AnalysisJob · SignOff</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Arrow Backend → AI Services -->
+    <div class="centered">
+      <div class="arrow-down labeled">
+        <span class="arrow-text">HTTP (localhost:11434) + subprocess</span>
+      </div>
+    </div>
+
+    <!-- AI Services + Data Stores (side by side) -->
+    <div class="side-by-side">
+
+      <div class="group-box" style="flex:1; max-width:380px;">
+        <span class="group-label">AI Services (Local)</span>
+        <div style="display:flex; flex-direction:column; gap:12px; padding-top:10px;">
+          <div class="box wide" style="max-width:100%;">
+            <span class="label">Ollama Server</span>
+            <span class="sublabel">localhost:11434</span>
+          </div>
+          <div class="flow-row" style="gap:16px;">
+            <div class="box compact">
+              <span class="label">MedGemma 4B</span>
+              <span class="sublabel">Vision-Language<br/>Model (Q8_0)</span>
+            </div>
+            <div class="box compact">
+              <span class="label">nomic-embed-text</span>
+              <span class="sublabel">Embedding Model<br/>768-dim vectors</span>
+            </div>
+          </div>
+          <div class="box" style="max-width:100%; align-self:center;">
+            <span class="label">TotalSegmentator 2.3+</span>
+            <span class="sublabel">nnU-Net · GPU subprocess<br/>Liver + Lesion segmentation</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="group-box" style="flex:1; max-width:400px;">
+        <span class="group-label">Data Stores (Local Filesystem)</span>
+        <div style="display:flex; flex-direction:column; gap:10px; padding-top:10px;">
+          <div class="flow-row" style="gap:12px;">
+            <div class="box compact">
+              <span class="label">uploads/</span>
+              <span class="sublabel">Raw DICOM<br/>NIfTI</span>
+            </div>
+            <div class="box compact">
+              <span class="label">processed/</span>
+              <span class="sublabel">NIfTI · Masks<br/>PNGs · Montages</span>
+            </div>
+          </div>
+          <div class="flow-row" style="gap:12px;">
+            <div class="box compact">
+              <span class="label">knowledge_base/</span>
+              <span class="sublabel">17 Clinical PDFs</span>
+            </div>
+            <div class="box compact">
+              <span class="label">vectordb/</span>
+              <span class="sublabel">ChromaDB<br/>~40 MB</span>
+            </div>
+          </div>
+          <div class="centered">
+            <div class="box compact">
+              <span class="label">audit.jsonl</span>
+              <span class="sublabel">Append-only<br/>Event Log</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     DIAGRAM 2: AI MODEL DIAGRAM
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <h2 class="diagram-title">AI Model Diagram</h2>
+
+  <div class="dual-flow">
+
+    <!-- LEFT COLUMN: Segmentation + Radiomics Pipeline -->
+    <div class="flow">
+      <div class="box wide">
+        <span class="label">Input: Medical Images</span>
+        <span class="sublabel">DICOM Series / NIfTI Volume<br/>(Multi-phase CT or MRI)</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">De-identification</span>
+        <span class="sublabel">pydicom — 45+ PHI tags stripped<br/>DICOM PS3.15 BALCP</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Format Conversion</span>
+        <span class="sublabel">DICOM → NIfTI<br/>dicom2nifti (primary)<br/>SimpleITK (fallback)</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">TotalSegmentator</span>
+        <span class="sublabel">nnU-Net backbone · GPU<br/>Task 1: Liver mask<br/>Task 2: Liver lesion mask</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Lesion Extraction</span>
+        <span class="sublabel">scipy.ndimage.label<br/>Connected components analysis<br/>Volume (mL) · Max diameter (mm)</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">PyRadiomics</span>
+        <span class="sublabel">1,000+ quantitative features<br/>7 classes: Shape, First-order,<br/>GLCM, GLRLM, GLSZM,<br/>GLDM, NGTDM</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Output:<br/>35-Feature Clinical Summary</span>
+        <span class="sublabel">Sphericity · Entropy · Contrast<br/>+ Interpretation Hints</span>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN: RAG + VLM Pipeline -->
+    <div class="flow">
+      <div class="box wide">
+        <span class="label">Input: Clinical Guidelines</span>
+        <span class="sublabel">17 PDFs (LI-RADS v2018/v2024,<br/>AASLD, EASL, BCLC,<br/>KLCA-NCC 2022)</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Text Splitting</span>
+        <span class="sublabel">LangChain RecursiveTextSplitter<br/>500 chars · 50 overlap</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Embedding Model:<br/>nomic-embed-text</span>
+        <span class="sublabel">768-dimensional vectors<br/>via Ollama API</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">ChromaDB Vector Store</span>
+        <span class="sublabel">HNSW index · Cosine similarity<br/>Top-5 retrieval · ~40 MB</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Prompt Assembly</span>
+        <span class="sublabel">Montage PNG (base64)<br/>+ Segmentation metrics<br/>+ Radiomic summary<br/>+ RAG guideline context<br/>+ LI-RADS v2024 system prompt</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Vision-Language Model:<br/>MedGemma 4B</span>
+        <span class="sublabel">Google medical VLM (Q8_0)<br/>Temperature: 0.05<br/>Max tokens: 2048<br/>Multi-modal (image + text)</span>
+      </div>
+
+      <div class="arrow-down"></div>
+
+      <div class="box wide">
+        <span class="label">Output:<br/>Structured LI-RADS Report</span>
+        <span class="sublabel">LI-RADS category (LR-1 → LR-5)<br/>BCLC Stage (0/A/B/C/D)<br/>Lesion findings · Recommendations</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Convergence note -->
+  <div style="text-align:center; margin-top:30px;">
+    <div style="display:inline-flex; align-items:center; gap:20px;">
+      <div class="box compact" style="background:#f8f8f8;">
+        <span class="label">Radiologist<br/>Sign-off</span>
+        <span class="sublabel">Approve / Request Changes</span>
+      </div>
+      <div class="arrow-right-inline"></div>
+      <div class="box compact" style="background:#f8f8f8;">
+        <span class="label">Export</span>
+        <span class="sublabel">PDF · FHIR R4 JSON<br/>Clipboard · Audit Log</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     DIAGRAM 3: FRAMEWORK & TECHNOLOGY STACK
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="diagram-section">
+  <h2 class="diagram-title">Framework & Technology Stack</h2>
+
+  <div class="pipeline">
+
+    <!-- Presentation Layer -->
+    <div class="group-box" style="margin-bottom: 24px;">
+      <span class="group-label">Presentation Layer</span>
+      <div style="padding-top:12px;">
+        <div class="flow-row" style="gap:16px;">
+          <div class="box compact">
+            <span class="label">React 18</span>
+            <span class="sublabel">Component UI</span>
+          </div>
+          <div class="box compact">
+            <span class="label">TypeScript 5.x</span>
+            <span class="sublabel">Type Safety</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Vite 6</span>
+            <span class="sublabel">Dev Server · HMR</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Tailwind CSS 3</span>
+            <span class="sublabel">Utility-first CSS</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Axios</span>
+            <span class="sublabel">HTTP Client</span>
+          </div>
+          <div class="box compact">
+            <span class="label">react-dropzone</span>
+            <span class="sublabel">File Upload</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="centered"><div class="arrow-down"></div></div>
+
+    <!-- Application Layer -->
+    <div class="group-box" style="margin-bottom: 24px;">
+      <span class="group-label">Application Layer</span>
+      <div style="padding-top:12px; display:flex; flex-direction:column; gap:14px;">
+        <div class="flow-row" style="gap:16px;">
+          <div class="box compact">
+            <span class="label">Python 3.11</span>
+            <span class="sublabel">Runtime</span>
+          </div>
+          <div class="box compact">
+            <span class="label">FastAPI</span>
+            <span class="sublabel">Async REST API</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Uvicorn</span>
+            <span class="sublabel">ASGI Server</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Pydantic 2.x</span>
+            <span class="sublabel">Data Validation</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Loguru</span>
+            <span class="sublabel">Structured Logging</span>
+          </div>
+        </div>
+        <div class="flow-row" style="gap:16px;">
+          <div class="box compact">
+            <span class="label">pydicom 3.x</span>
+            <span class="sublabel">DICOM I/O</span>
+          </div>
+          <div class="box compact">
+            <span class="label">dicom2nifti</span>
+            <span class="sublabel">Format Conversion</span>
+          </div>
+          <div class="box compact">
+            <span class="label">SimpleITK</span>
+            <span class="sublabel">Fallback Conversion</span>
+          </div>
+          <div class="box compact">
+            <span class="label">nibabel</span>
+            <span class="sublabel">NIfTI I/O</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Pillow</span>
+            <span class="sublabel">Image Rendering</span>
+          </div>
+          <div class="box compact">
+            <span class="label">NumPy · SciPy</span>
+            <span class="sublabel">Array Ops · Labeling</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="centered"><div class="arrow-down"></div></div>
+
+    <!-- AI / ML Layer -->
+    <div class="group-box" style="margin-bottom: 24px;">
+      <span class="group-label">AI / ML Layer</span>
+      <div style="padding-top:12px; display:flex; flex-direction:column; gap:14px;">
+        <div class="flow-row" style="gap:16px;">
+          <div class="box">
+            <span class="label">TotalSegmentator 2.3+</span>
+            <span class="sublabel">nnU-Net backbone<br/>Liver + Lesion Segmentation</span>
+          </div>
+          <div class="box">
+            <span class="label">PyRadiomics 3.x</span>
+            <span class="sublabel">1,000+ Quantitative<br/>Texture/Shape Features</span>
+          </div>
+          <div class="box">
+            <span class="label">MedGemma 4B</span>
+            <span class="sublabel">Google Medical VLM<br/>Q8_0 Quantization</span>
+          </div>
+        </div>
+        <div class="flow-row" style="gap:16px;">
+          <div class="box compact">
+            <span class="label">PyTorch 2.5.1</span>
+            <span class="sublabel">+ CUDA 12.1</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Ollama</span>
+            <span class="sublabel">Local LLM Server</span>
+          </div>
+          <div class="box compact">
+            <span class="label">LangChain</span>
+            <span class="sublabel">PDF Loading<br/>Text Splitting</span>
+          </div>
+          <div class="box compact">
+            <span class="label">ChromaDB</span>
+            <span class="sublabel">Vector Store<br/>HNSW Index</span>
+          </div>
+          <div class="box compact">
+            <span class="label">nomic-embed-text</span>
+            <span class="sublabel">768-dim<br/>Embeddings</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="centered"><div class="arrow-down"></div></div>
+
+    <!-- Data & Storage Layer -->
+    <div class="group-box" style="margin-bottom: 24px;">
+      <span class="group-label">Data & Storage Layer</span>
+      <div style="padding-top:12px;">
+        <div class="flow-row" style="gap:16px;">
+          <div class="box compact">
+            <span class="label">uploads/</span>
+            <span class="sublabel">Raw DICOM / NIfTI</span>
+          </div>
+          <div class="box compact">
+            <span class="label">processed/</span>
+            <span class="sublabel">NIfTI · Masks · PNGs</span>
+          </div>
+          <div class="box compact">
+            <span class="label">knowledge_base/</span>
+            <span class="sublabel">17 Clinical PDFs</span>
+          </div>
+          <div class="box compact">
+            <span class="label">vectordb/</span>
+            <span class="sublabel">ChromaDB (~40 MB)</span>
+          </div>
+          <div class="box compact">
+            <span class="label">audit.jsonl</span>
+            <span class="sublabel">Append-only Log</span>
+          </div>
+          <div class="box compact">
+            <span class="label">In-Memory</span>
+            <span class="sublabel">Job Store<br/>Slice Cache</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="centered"><div class="arrow-down"></div></div>
+
+    <!-- Infrastructure Layer -->
+    <div class="group-box">
+      <span class="group-label">Infrastructure Layer</span>
+      <div style="padding-top:12px;">
+        <div class="flow-row" style="gap:16px;">
+          <div class="box compact">
+            <span class="label">NVIDIA RTX 4070</span>
+            <span class="sublabel">8 GB VRAM</span>
+          </div>
+          <div class="box compact">
+            <span class="label">CUDA 12.1</span>
+            <span class="sublabel">GPU Compute</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Windows 11 Pro</span>
+            <span class="sublabel">Host OS</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Python venv</span>
+            <span class="sublabel">Isolated Env</span>
+          </div>
+          <div class="box compact">
+            <span class="label">Node.js 18+</span>
+            <span class="sublabel">Frontend Runtime</span>
+          </div>
+          <div class="box compact">
+            <span class="label">100% Local</span>
+            <span class="sublabel">No External APIs<br/>HIPAA Compliant</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

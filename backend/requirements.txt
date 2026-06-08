@@ -1,0 +1,49 @@
+# ── Web framework ──────────────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
+aiofiles>=24.1.0
+
+# ── Validation ─────────────────────────────────────────────────────────────────
+pydantic>=2.9.0
+pydantic-settings>=2.6.0
+
+# ── DICOM processing ───────────────────────────────────────────────────────────
+pydicom>=3.0.0
+dicom2nifti>=2.5.0
+SimpleITK>=2.4.0
+
+# ── Image processing ───────────────────────────────────────────────────────────
+Pillow>=11.0.0
+numpy>=2.1.0
+opencv-python-headless>=4.10.0
+nibabel>=5.3.0
+scipy>=1.14.0
+
+# ── Segmentation ───────────────────────────────────────────────────────────────
+# PyTorch with CUDA must be installed first (see setup instructions below)
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+TotalSegmentator>=2.3.0
+
+# ── Radiomics ──────────────────────────────────────────────────────────────────
+pyradiomics>=3.0.1
+
+# ── RAG pipeline ───────────────────────────────────────────────────────────────
+chromadb>=0.5.20
+langchain>=0.3.0
+langchain-community>=0.3.0
+langchain-ollama>=0.2.0
+pypdf>=5.0.0
+
+# ── LLM client (Ollama OpenAI-compatible) ──────────────────────────────────────
+openai>=1.55.0
+ollama>=0.4.0
+
+# ── Utilities ──────────────────────────────────────────────────────────────────
+python-dotenv>=1.0.0
+loguru>=0.7.0
+httpx>=0.28.0
+
+# ── Compressed DICOM support (JPEG / JPEG2000 transfer syntaxes) ───────────────
+pylibjpeg>=2.0.0
+pylibjpeg-libjpeg>=2.1.0

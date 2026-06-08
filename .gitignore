@@ -1,0 +1,57 @@
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ─── Virtual environments ───
+.venv/
+venv/
+ENV/
+
+# ─── Node.js ───
+node_modules/
+npm-debug.log*
+
+# ─── Environment files ───
+.env
+!.env.example
+
+# ─── IDE / Editor ───
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── Runtime data (auto-created by config.py) ───
+backend/data/uploads/
+backend/data/processed/
+backend/data/logs/
+
+# ─── Vector database (large, regenerable via ingest_guidelines.py) ───
+backend/data/vectordb/
+
+# ─── SQLite databases ───
+*.db
+
+# ─── Datasets (large medical imaging files, stored separately) ───
+Datasets/
+
+# ─── AI agent / assistant configs ───
+.antigravitycli/
+.claude/
+.claude-flow/
+.mcp.json
+
+# ─── Build output ───
+frontend/dist/
+
+# ─── OS files ───
+*.log
