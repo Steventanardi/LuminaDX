@@ -74,6 +74,7 @@ export interface DiagnosticReport {
   generated_at: string
   modality: string
   cancer_type: string
+  model: string | null
   overall_impression: string
   lesions: LesionFinding[]
   differential_diagnosis: string[]
@@ -100,6 +101,7 @@ export interface AnalysisJob {
   job_id: string
   study_id: string
   cancer_type: string
+  model: string | null
   owner_user_id: string | null
   status: AnalysisStatus
   progress: number
@@ -127,3 +129,16 @@ export const CANCER_TYPE_META: Record<CancerType, { label: string; icon: string;
   breast:     { label: 'Breast',     icon: '🎀', scoreSystem: 'BI-RADS',    color: 'pink'    },
   colorectal: { label: 'Colorectal', icon: '🔴', scoreSystem: 'C-RADS',     color: 'orange'  },
 }
+
+// Per-cancer LLM model catalog (from GET /api/analysis/models)
+export interface ModelOption {
+  tag: string
+  label: string
+}
+
+export interface CancerModelInfo {
+  default: string
+  options: ModelOption[]
+}
+
+export type ModelCatalog = Record<string, CancerModelInfo>

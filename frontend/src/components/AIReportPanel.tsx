@@ -482,6 +482,15 @@ export default function AIReportPanel({
       <div className={TA}>
         <div className="flex items-center justify-between mb-2">
           <SectionHeader title="Overall Impression" isDark={isDark} />
+          {report.model && (
+            <span
+              title="LLM that produced this report"
+              className={clsx('text-[9px] font-mono px-1.5 py-0.5 rounded border',
+                isDark ? 'bg-white/5 border-white/[0.1] text-slate-400' : 'bg-black/[0.04] border-black/[0.08] text-slate-500')}
+            >
+              {report.model}
+            </span>
+          )}
         </div>
         {editMode ? (
           <EditTextarea

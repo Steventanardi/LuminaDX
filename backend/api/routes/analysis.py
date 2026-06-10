@@ -22,6 +22,7 @@ from core.database import User
 from core.dicom_processor import convert_to_nifti, extract_study_info, load_series_map
 from core.llm_client import llm_client
 from core.modules import registry
+from core import model_catalog
 from core.rag_engine import rag_engine
 from core.radiomics_extractor import extract, summarize
 from core.segmentation import SegmentationResult, run_segmentation
@@ -56,16 +57,17 @@ async def _pipeline(
     upload_type = meta.get("type", "dicom")
     cancer_type = meta.get("cancer_type", "liver")
     module = registry.get(cancer_type)
+    model_tag = job.model or model_catalog.default_for(cancer_type)
 
-    log_analysis_start(job.job_id, study_id, settings.llm_model)
+    log_analysis_start(job.job_id, study_id, model_tag)
     t0 = time.monotonic()
 
     try:
         if upload_type == "image":
-            await _run_image_pipeline(job, study_dir, meta, proc_dir, patient_info, module)
+            await _run_image_pipeline(job, study_dir, meta, proc_dir, patient_info, module, model_tag)
         else:
-            await _run_volumetric_pipeline(job, study_dir, meta, proc_dir, upload_type, patient_info, module)
-        log_analysis_complete(job.job_id, study_id, settings.llm_model, time.monotonic() - t0, "complete")
+            await _run_volumetric_pipeline(job, study_dir, meta, proc_dir, upload_type, patient_info, module, model_tag)
+        log_analysis_complete(job.job_id, study_id, model_tag, time.monotonic() - t0, "complete")
 
     except Exception as exc:
         logger.exception(f"Pipeline error: {exc}")
@@ -74,7 +76,7 @@ async def _pipeline(
         job.current_step = "Failed"
         job.error = str(exc)
         store.save_job(job)
-        log_analysis_complete(job.job_id, study_id, settings.llm_model, time.monotonic() - t0, "failed")
+        log_analysis_complete(job.job_id, study_id, model_tag, time.monotonic() - t0, "failed")
 
 
 async def _run_image_pipeline(
@@ -84,6 +86,7 @@ async def _run_image_pipeline(
     proc_dir: Path,
     patient_info: Optional[dict],
     module,
+    model_tag: str,
 ) -> None:
     study_id = job.study_id
     t = {}
@@ -123,10 +126,12 @@ async def _run_image_pipeline(
         radiomics_summary="",
         patient_info=patient_info,
         module=module,
+        model=model_tag,
     )
     t["llm_s"] = round(time.monotonic() - t0, 2)
     report.study_id = study_id
     report.cancer_type = module.cancer_type
+    report.model = model_tag
 
     job.status = AnalysisStatus.COMPLETE
     job.progress = 100
@@ -135,7 +140,7 @@ async def _run_image_pipeline(
     job.report = report
     job.timings = t
     store.save_job(job)
-    logger.info(f"Image pipeline complete for study {study_id}")
+    logger.info(f"Image pipeline complete for study {study_id} (model={model_tag})")
 
 
 async def _run_volumetric_pipeline(
@@ -146,6 +151,7 @@ async def _run_volumetric_pipeline(
     upload_type: str,
     patient_info: Optional[dict],
     module,
+    model_tag: str,
 ) -> None:
     study_id = job.study_id
     t: dict[str, float] = {}
@@ -236,10 +242,12 @@ async def _run_volumetric_pipeline(
         radiomics_summary=rad_summary,
         patient_info=patient_info,
         module=module,
+        model=model_tag,
     )
     t["llm_s"] = round(time.monotonic() - t0, 2)
     report.study_id = study_id
     report.cancer_type = module.cancer_type
+    report.model = model_tag
 
     job.status = AnalysisStatus.COMPLETE
     job.progress = 100
@@ -267,11 +275,18 @@ def _get_owned_job(job_id: str, user: User) -> AnalysisJob:
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
+@router.get("/models")
+async def list_models(current_user: User = Depends(get_current_user)):
+    """Per-cancer LLM catalog (default + selectable options) for the model picker."""
+    return model_catalog.catalog()
+
+
 @router.post("/start/{study_id}", response_model=AnalysisJob)
 async def start_analysis(
     study_id: str,
     background_tasks: BackgroundTasks,
     patient_context: Optional[PatientContext] = None,
+    model: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
     study_dir = settings.uploads_dir / study_id
@@ -281,11 +296,13 @@ async def start_analysis(
     meta_path = study_dir / "_meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
     cancer_type = meta.get("cancer_type", "liver")
+    model_tag = model_catalog.resolve(cancer_type, model)
 
     job = AnalysisJob(
         job_id=str(uuid.uuid4()),
         study_id=study_id,
         cancer_type=cancer_type,
+        model=model_tag,
         owner_user_id=current_user.id,
         owner_department=current_user.department,
     )

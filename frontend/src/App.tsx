@@ -11,10 +11,10 @@ import Toast from './components/Toast'
 import UploadPanel from './components/UploadPanel'
 import { useAuth } from './context/AuthContext'
 import { useAnalysis } from './hooks/useAnalysis'
-import { dicomApi, ragApi } from './services/api'
+import { analysisApi, dicomApi, ragApi } from './services/api'
 import { useI18n } from './i18n'
 import type { TKey } from './i18n'
-import type { CancerType, PatientContext, UploadResponse } from './types'
+import type { CancerType, ModelCatalog, PatientContext, UploadResponse } from './types'
 import { CANCER_TYPE_META } from './types'
 
 const DEFAULT_CTX: PatientContext = {
@@ -48,6 +48,8 @@ export default function App() {
   const { job, slices, rawSlices, report, start, signOff, reset } = useAnalysis()
   const [upload, setUpload]               = useState<UploadResponse | null>(null)
   const [cancerType, setCancerType]       = useState<CancerType>('liver')
+  const [modelCatalog, setModelCatalog]   = useState<ModelCatalog | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [ctx, setCtx]                     = useState<PatientContext>(DEFAULT_CTX)
   const [previewSlices, setPreviewSlices] = useState<string[]>([])
   const [ragStatus, setRagStatus]         = useState<{ chunks: number; pdf_count: number } | null>(null)
@@ -77,7 +79,14 @@ export default function App() {
                     ctx.afp_level !== null || ctx.notes.trim() !== ''
 
   useEffect(() => { ragApi.status().then(setRagStatus).catch(() => null) }, [])
+  useEffect(() => { analysisApi.models().then(setModelCatalog).catch(() => null) }, [])
   useEffect(() => { localStorage.setItem('v2-theme', isDark ? 'dark' : 'light') }, [isDark])
+
+  // Default the model to the current cancer's recommended model whenever the
+  // cancer type changes (or once the catalog loads).
+  useEffect(() => {
+    if (modelCatalog?.[cancerType]) setSelectedModel(modelCatalog[cancerType].default)
+  }, [cancerType, modelCatalog])
 
   // Toast on analysis complete
   useEffect(() => {
@@ -122,7 +131,7 @@ export default function App() {
       dicomApi.updateCancerType(upload.study_id, ct).catch(() => null)
     }
   }, [upload])
-  const handleAnalyse   = useCallback(async () => { if (upload) await start(upload.study_id, ctx) }, [upload, ctx, start])
+  const handleAnalyse   = useCallback(async () => { if (upload) await start(upload.study_id, ctx, selectedModel ?? undefined) }, [upload, ctx, selectedModel, start])
   const handleReset     = () => { setUpload(null); setCtx(DEFAULT_CTX); setPreviewSlices([]); setShowRaw(false); setDetection(null); reset() }
   const handleLogout    = async () => { await logout() }
   const handleIngestRag = async () => {
@@ -579,7 +588,33 @@ export default function App() {
                   <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('step.run')}</span>
                 </div>
                 {uploaded && (
-                  <div className="pl-8">
+                  <div className="pl-8 space-y-2.5">
+                    {/* Model picker — lets you compare LLMs per cancer */}
+                    {modelCatalog?.[cancerType] && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">AI Model</span>
+                          {selectedModel === modelCatalog[cancerType].default && (
+                            <span className="text-[9px] text-slate-500">recommended</span>
+                          )}
+                        </div>
+                        <select
+                          value={selectedModel ?? modelCatalog[cancerType].default}
+                          onChange={e => setSelectedModel(e.target.value)}
+                          disabled={isRunning}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                          className={clsx('w-full rounded-lg px-2.5 py-2 text-xs font-mono border focus:outline-none focus:border-accent/50 transition-colors disabled:opacity-50',
+                            isDark ? 'bg-slate-800 border-white/[0.12] text-slate-100' : 'bg-white border-black/[0.12] text-slate-800')}
+                        >
+                          {modelCatalog[cancerType].options.map(m => (
+                            <option key={m.tag} value={m.tag}
+                              style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b' }}>
+                              {m.label}{m.tag === modelCatalog[cancerType].default ? '  ★' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <button onClick={handleAnalyse} disabled={isRunning}
                       className={clsx('w-full py-2.5 rounded-xl font-semibold text-sm transition-all duration-200',
                         isRunning ? 'bg-accent/15 text-accent/60 cursor-not-allowed'

@@ -32,12 +32,14 @@ class LLMClient:
         radiomics_summary: str = "",
         patient_info: Optional[dict] = None,
         module: Optional["DiagnosisModule"] = None,
+        model: Optional[str] = None,
     ) -> DiagnosticReport:
         if module is None:
             from core.modules.liver import LiverModule
             module = LiverModule()
 
-        logger.info(f"Calling LLM ({settings.llm_model}) for cancer_type={module.cancer_type} …")
+        model_tag = model or settings.llm_model
+        logger.info(f"Calling LLM ({model_tag}) for cancer_type={module.cancer_type} …")
 
         with open(montage_path, "rb") as fh:
             b64 = base64.b64encode(fh.read()).decode()
@@ -46,7 +48,7 @@ class LLMClient:
         user_prompt = module.build_prompt(seg, modality, rag_context, radiomics_summary, patient_info)
 
         response = await self._client.chat.completions.create(
-            model=settings.llm_model,
+            model=model_tag,
             messages=[
                 {"role": "system", "content": system_msg},
                 {

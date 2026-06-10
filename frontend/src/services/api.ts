@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AnalysisJob, DiagnosticReport, DicomStudy, PatientContext, UploadResponse, User } from '../types'
+import type { AnalysisJob, DiagnosticReport, DicomStudy, ModelCatalog, PatientContext, UploadResponse, User } from '../types'
 
 const http = axios.create({
   baseURL: '/api',
@@ -55,8 +55,10 @@ export const dicomApi = {
 // ── Analysis ──────────────────────────────────────────────────────────────────
 
 export const analysisApi = {
-  start: (studyId: string, ctx?: PatientContext): Promise<AnalysisJob> =>
-    http.post<AnalysisJob>(`/analysis/start/${studyId}`, ctx).then(r => r.data),
+  start: (studyId: string, ctx?: PatientContext, model?: string): Promise<AnalysisJob> =>
+    http.post<AnalysisJob>(`/analysis/start/${studyId}`, ctx, { params: model ? { model } : undefined }).then(r => r.data),
+  models: (): Promise<ModelCatalog> =>
+    http.get<ModelCatalog>('/analysis/models').then(r => r.data),
   status: (jobId: string): Promise<AnalysisJob> =>
     http.get<AnalysisJob>(`/analysis/status/${jobId}`).then(r => r.data),
   report: (jobId: string): Promise<DiagnosticReport> =>

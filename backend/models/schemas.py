@@ -93,6 +93,7 @@ class DiagnosticReport(BaseModel):
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     modality: str
     cancer_type: str = "liver"
+    model: Optional[str] = None   # LLM tag that produced this report (for comparison)
     overall_impression: str
     lesions: List[LesionFinding] = []
     differential_diagnosis: List[str] = []
@@ -128,6 +129,7 @@ class AnalysisJob(BaseModel):
     job_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     study_id: str
     cancer_type: str = "liver"
+    model: Optional[str] = None   # LLM tag chosen for this run
     owner_user_id: Optional[str] = None
     owner_department: Optional[str] = None
     status: AnalysisStatus = AnalysisStatus.PENDING
