@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { analysisApi } from '../services/api'
+import { useI18n } from '../i18n'
 import type { AnalysisJob } from '../types'
 
 interface Props { open: boolean; onClose: () => void; isDark?: boolean }
@@ -25,6 +26,7 @@ const STATUS_DARK: Record<string, string> = {
 }
 
 export default function HistoryPanel({ open, onClose, isDark = false }: Props) {
+  const { t } = useI18n()
   const [jobs, setJobs] = useState<AnalysisJob[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -44,14 +46,14 @@ export default function HistoryPanel({ open, onClose, isDark = false }: Props) {
       <aside className={clsx('fixed right-0 top-0 bottom-0 z-50 w-80 flex flex-col shadow-2xl backdrop-blur-xl border-l',
         isDark ? 'bg-slate-900/90 border-white/[0.06]' : 'bg-white/80 border-white/80 shadow-violet-100/30')}>
         <div className={clsx('flex items-center justify-between px-4 py-3 border-b shrink-0', isDark ? 'border-white/[0.06]' : 'border-black/[0.06]')}>
-          <h2 className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>Session History</h2>
+          <h2 className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('hist.title')}</h2>
           <button onClick={onClose} className={clsx('text-lg leading-none transition-colors', isDark ? 'text-slate-500 hover:text-slate-200' : 'text-slate-400 hover:text-slate-700')}>×</button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {loading ? (
-            <div className="flex items-center justify-center h-24 text-slate-400 text-sm">Loading…</div>
+            <div className="flex items-center justify-center h-24 text-slate-400 text-sm">{t('hist.loading')}</div>
           ) : jobs.length === 0 ? (
-            <div className="flex items-center justify-center h-24 text-slate-400 text-sm text-center px-4">No analyses yet</div>
+            <div className="flex items-center justify-center h-24 text-slate-400 text-sm text-center px-4">{t('hist.empty')}</div>
           ) : (
             jobs.map(job => (
               <div key={job.job_id} className={clsx('rounded-xl border p-3 space-y-2', isDark ? 'bg-white/5 border-white/[0.06]' : 'bg-white/60 border-black/[0.06]')}>
@@ -60,7 +62,7 @@ export default function HistoryPanel({ open, onClose, isDark = false }: Props) {
                   <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS[job.status] ?? (isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-50 text-slate-500')}`}>{job.status}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1 text-[10px]">
-                  {[['LI-RADS', job.report?.lesions?.[0]?.lirads_category ?? '—'], ['BCLC', job.report?.bclc_stage ?? '—'], ['Time', elapsed(job)]].map(([k, v]) => (
+                  {[[t('hist.lirads'), job.report?.lesions?.[0]?.lirads_category ?? '—'], [t('hist.bclc'), job.report?.bclc_stage ?? '—'], [t('hist.time'), elapsed(job)]].map(([k, v]) => (
                     <div key={k}>
                       <span className="text-slate-400 block">{k}</span>
                       <span className={clsx('font-medium', isDark ? 'text-slate-200' : 'text-slate-700')}>{v}</span>

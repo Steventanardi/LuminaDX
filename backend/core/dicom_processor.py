@@ -9,6 +9,7 @@ import numpy as np
 import pydicom
 import SimpleITK as sitk
 from loguru import logger
+from pydicom.uid import generate_uid
 
 from models.schemas import Modality, SeriesInfo, StudyPhaseLabel
 
@@ -100,6 +101,20 @@ _PHI_ANONYMIZE = [
     "NameOfPhysiciansReadingStudy",
 ]
 
+# Dates/times are PHI under the HIPAA Safe Harbor method — blank rather than
+# replace, since DA/TM value representations reject free text like "ANONYMIZED".
+_PHI_DATES = [
+    "StudyDate", "SeriesDate", "AcquisitionDate", "ContentDate", "OverlayDate",
+    "CurveDate", "AcquisitionDateTime", "InstanceCreationDate",
+    "StudyTime", "SeriesTime", "AcquisitionTime", "ContentTime", "OverlayTime",
+    "CurveTime", "InstanceCreationTime",
+]
+
+# Identity UIDs are remapped deterministically so that all slices of one series
+# keep a consistent (new) SeriesInstanceUID — otherwise series grouping and
+# DICOM→NIfTI conversion would break.
+_PHI_UIDS = ["StudyInstanceUID", "SeriesInstanceUID", "SOPInstanceUID"]
+
 
 def anonymize_dataset(ds: pydicom.Dataset) -> pydicom.Dataset:
     """Remove or scrub all PHI fields per DICOM PS3.15 Basic Application Level Confidentiality Profile."""
@@ -117,8 +132,39 @@ def anonymize_dataset(ds: pydicom.Dataset) -> pydicom.Dataset:
         except Exception:
             pass
 
+    for tag in _PHI_DATES:
+        try:
+            if hasattr(ds, tag):
+                setattr(ds, tag, "")
+        except Exception:
+            pass
+
+    # Private tags can carry vendor-specific PHI — strip them wholesale.
+    try:
+        ds.remove_private_tags()
+    except Exception:
+        pass
+
+    # Deterministically remap identity UIDs (same input UID → same output UID),
+    # keeping slices of a series grouped while breaking linkage to the original.
+    for tag in _PHI_UIDS:
+        try:
+            if hasattr(ds, tag) and getattr(ds, tag):
+                new_uid = generate_uid(entropy_srcs=[str(getattr(ds, tag))])
+                setattr(ds, tag, new_uid)
+        except Exception:
+            pass
+    # Keep the file-meta SOP Instance UID consistent with the dataset.
+    try:
+        if getattr(ds, "file_meta", None) is not None and hasattr(ds, "SOPInstanceUID"):
+            ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
+    except Exception:
+        pass
+
     ds.PatientID = "ANON_" + str(uuid.uuid4())[:8].upper()
     ds.PatientName = "ANONYMIZED^ANONYMIZED"
+    ds.PatientIdentityRemoved = "YES"
+    ds.DeidentificationMethod = "PS3.15 BALCP (named tags + private tags + UID remap + date scrub)"
     return ds
 
 

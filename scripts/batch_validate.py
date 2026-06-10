@@ -107,8 +107,8 @@ def _extract_row(case_id: str, study_id: str, job_id: str, job: dict, bench: dic
     first = lesions[0] if lesions else {}
     timings = job.get("timings") or {}
 
-    # total_s: use benchmark total_pipeline_s if available, else sum timings
-    total_s = bench.get("total_pipeline_s") or sum(timings.values()) or ""
+    # total_s: use benchmark wall-clock total if available, else sum timings
+    total_s = bench.get("total_s") or sum(timings.values()) or ""
 
     return {
         "case_id":          case_id,

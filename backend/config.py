@@ -21,8 +21,17 @@ class Settings(BaseSettings):
     rag_chunk_overlap: int = 50
     rag_top_k: int = 5
 
+    # When False, extract Original-image features only (fast). Wavelet/LoG add
+    # ~1,000 features that are NOT used in the LLM summary, so they are off by
+    # default — enable only if you need the full feature set for analysis.
+    radiomics_extended: bool = False
+
     device: str = "gpu"
-    api_key: str = ""  # set API_KEY env var to enable; empty = no auth
+    api_key: str = ""  # legacy; replaced by JWT auth
+
+    # Auth
+    auth_secret_key: str = "change-me-in-production-use-AUTH_SECRET_KEY-env-var"
+    auth_token_expire_hours: int = 24
 
     model_config = {"env_file": ".env"}
 

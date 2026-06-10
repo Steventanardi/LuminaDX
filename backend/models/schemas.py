@@ -61,6 +61,9 @@ class DicomStudy(BaseModel):
     study_description: Optional[str] = None
     num_files: int = 0
     series: List[SeriesInfo] = []
+    cancer_type: str = "liver"
+    owner_user_id: Optional[str] = None
+    owner_department: Optional[str] = None
 
     @property
     def phases(self) -> List[str]:
@@ -71,11 +74,15 @@ class LesionFinding(BaseModel):
     lesion_id: str
     location_segment: Optional[str] = None
     size_mm: Optional[float] = None
+    # LI-RADS (liver-specific; kept for backward compat)
     lirads_category: LiRadsCategory = LiRadsCategory.INDETERMINATE
     aphe_present: Optional[bool] = None
     washout_present: Optional[bool] = None
     capsule_present: Optional[bool] = None
     diffusion_restriction: Optional[bool] = None
+    # Generic scoring (used by skin / lung / breast / colorectal modules)
+    score_system: Optional[str] = None   # e.g. "ABCDE", "BI-RADS", "Lung-RADS"
+    score: Optional[str] = None          # human-readable score, e.g. "High risk (5/7)"
     major_features: List[str] = []
     ancillary_features: List[str] = []
     reasoning: Optional[str] = None
@@ -85,11 +92,13 @@ class DiagnosticReport(BaseModel):
     study_id: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     modality: str
+    cancer_type: str = "liver"
     overall_impression: str
     lesions: List[LesionFinding] = []
     differential_diagnosis: List[str] = []
-    bclc_stage: Optional[str] = None
-    vascular_involvement: Optional[str] = None
+    bclc_stage: Optional[str] = None          # liver-specific (BCLC)
+    vascular_involvement: Optional[str] = None # liver-specific
+    staging: Optional[str] = None              # generic staging for other cancers
     recommendations: List[str] = []
     guideline_citations: List[str] = []
     raw_llm_output: Optional[str] = None
@@ -118,6 +127,9 @@ class SignOffRequest(BaseModel):
 class AnalysisJob(BaseModel):
     job_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     study_id: str
+    cancer_type: str = "liver"
+    owner_user_id: Optional[str] = None
+    owner_department: Optional[str] = None
     status: AnalysisStatus = AnalysisStatus.PENDING
     progress: int = 0
     current_step: str = "Queued"
@@ -135,6 +147,9 @@ class UploadResponse(BaseModel):
     modality: Optional[str]
     series: List[SeriesInfo] = []
     message: str
+    suggested_cancer_type: Optional[str] = None   # e.g. "liver" — from DICOM metadata
+    detection_confidence: Optional[str] = None    # "high" | "medium" | "low"
+    detection_reason: Optional[str] = None        # e.g. "BodyPartExamined: LIVER"
 
 
 class RagQueryRequest(BaseModel):

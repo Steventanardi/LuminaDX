@@ -12,15 +12,30 @@ from loguru import logger
 
 from config import settings
 
-_COLLECTION = "liver_cancer_guidelines"
+_DEFAULT_COLLECTION = "liver_cancer_guidelines"
+_COLLECTION_MAP = {
+    "liver":      "liver_cancer_guidelines",
+    "skin":       "skin_cancer_guidelines",
+    "lung":       "lung_cancer_guidelines",
+    "breast":     "breast_cancer_guidelines",
+    "colorectal": "colorectal_cancer_guidelines",
+}
 
 
 class RAGEngine:
     def __init__(self) -> None:
         self._client: chromadb.PersistentClient | None = None
-        self._collection = None
+        self._collections: dict = {}
         self._embeddings: OllamaEmbeddings | None = None
         self.ready = False
+
+    def _get_collection(self, namespace: str = "liver"):
+        name = _COLLECTION_MAP.get(namespace, _DEFAULT_COLLECTION)
+        if name not in self._collections:
+            self._collections[name] = self._client.get_or_create_collection(
+                name=name, metadata={"hnsw:space": "cosine"},
+            )
+        return self._collections[name]
 
     async def initialize(self) -> None:
         logger.info("Initialising RAG engine …")
@@ -28,23 +43,30 @@ class RAGEngine:
             path=str(settings.vectordb_dir),
             settings=_CS(anonymized_telemetry=False),
         )
-        self._collection = self._client.get_or_create_collection(
-            name=_COLLECTION,
-            metadata={"hnsw:space": "cosine"},
-        )
+        # Pre-load the default liver collection so chunk_count reflects it
+        self._get_collection("liver")
         self._embeddings = OllamaEmbeddings(
             base_url=settings.ollama_base_url,
             model=settings.embed_model,
         )
         self.ready = True
-        logger.info(f"RAG ready — {self._collection.count()} chunks in store")
+        logger.info(f"RAG ready — {self.chunk_count} liver-guideline chunks in store")
 
-    async def ingest_knowledge_base(self) -> int:
-        pdfs = list(settings.knowledge_base_dir.glob("*.pdf"))
-        if not pdfs:
-            logger.warning("No PDFs to ingest")
+    async def ingest_knowledge_base(self, namespace: str = "liver") -> int:
+        kb_dir = settings.knowledge_base_dir
+        # Cancer-specific subfolder takes priority; fall back to root for liver
+        sub = kb_dir / namespace
+        pdf_dir = sub if sub.exists() else (kb_dir if namespace == "liver" else None)
+        if pdf_dir is None:
+            logger.warning(f"No knowledge base dir for namespace={namespace}")
             return 0
 
+        pdfs = list(pdf_dir.glob("*.pdf"))
+        if not pdfs:
+            logger.warning(f"No PDFs to ingest (namespace={namespace}, dir={pdf_dir})")
+            return 0
+
+        collection = self._get_collection(namespace)
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=settings.rag_chunk_size,
             chunk_overlap=settings.rag_chunk_overlap,
@@ -58,36 +80,31 @@ class RAGEngine:
                 chunks = splitter.split_documents(docs)
                 texts = [c.page_content for c in chunks]
                 metas = [
-                    {"source": pdf.name, "page": c.metadata.get("page", 0)}
+                    {"source": pdf.name, "page": c.metadata.get("page", 0), "cancer_type": namespace}
                     for c in chunks
                 ]
-                ids = [f"{pdf.stem}__{i}" for i in range(len(chunks))]
+                ids = [f"{namespace}__{pdf.stem}__{i}" for i in range(len(chunks))]
                 embeddings = await self._embed(texts)
-
-                self._collection.upsert(
-                    ids=ids,
-                    embeddings=embeddings,
-                    documents=texts,
-                    metadatas=metas,
-                )
+                collection.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metas)
                 total += len(chunks)
-                logger.info(f"Ingested {pdf.name}: {len(chunks)} chunks")
+                logger.info(f"Ingested {pdf.name} [{namespace}]: {len(chunks)} chunks")
             except Exception as exc:
                 logger.error(f"Failed to ingest {pdf.name}: {exc}")
 
         return total
 
-    async def retrieve(self, query: str, n: int | None = None) -> str:
-        if not self.ready or not self._collection:
+    async def retrieve(self, query: str, n: int | None = None, namespace: str = "liver") -> str:
+        if not self.ready:
             return ""
-        count = self._collection.count()
+        collection = self._get_collection(namespace)
+        count = collection.count()
         if count == 0:
             return ""
 
         k = min(n or settings.rag_top_k, count)
         try:
             q_emb = await self._embed([query])
-            res = self._collection.query(
+            res = collection.query(
                 query_embeddings=q_emb,
                 n_results=k,
                 include=["documents", "metadatas", "distances"],
@@ -106,11 +123,14 @@ class RAGEngine:
             return ""
 
     async def _embed(self, texts: List[str]) -> List[List[float]]:
-        return [await self._embeddings.aembed_query(t) for t in texts]
+        # Batch in one call instead of one HTTP round-trip per chunk — far faster
+        # when ingesting a full guideline PDF (hundreds of chunks).
+        return await self._embeddings.aembed_documents(texts)
 
     @property
     def chunk_count(self) -> int:
-        return self._collection.count() if self._collection else 0
+        col = self._collections.get(_DEFAULT_COLLECTION)
+        return col.count() if col else 0
 
 
 rag_engine = RAGEngine()

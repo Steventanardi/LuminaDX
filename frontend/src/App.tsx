@@ -1,28 +1,34 @@
 import clsx from 'clsx'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import AdminDashboard from './components/AdminDashboard'
 import AIReportPanel from './components/AIReportPanel'
 import DicomViewer from './components/DicomViewer'
 import HistoryPanel from './components/HistoryPanel'
 import LiRadsScore from './components/LiRadsScore'
+import LoginScreen from './components/LoginScreen'
 import ProgressTracker from './components/ProgressTracker'
 import Toast from './components/Toast'
 import UploadPanel from './components/UploadPanel'
+import { useAuth } from './context/AuthContext'
 import { useAnalysis } from './hooks/useAnalysis'
 import { dicomApi, ragApi } from './services/api'
-import type { PatientContext, UploadResponse } from './types'
+import { useI18n } from './i18n'
+import type { TKey } from './i18n'
+import type { CancerType, PatientContext, UploadResponse } from './types'
+import { CANCER_TYPE_META } from './types'
 
 const DEFAULT_CTX: PatientContext = {
   cirrhosis: false, hepatitis_b: false, hepatitis_c: false,
   afp_level: null, prior_hcc: false, notes: '',
 }
 
-const APP_SHORTCUTS = [
-  ['T', 'Toggle dark / light theme'],
-  ['Space', 'Run analysis (when scan loaded)'],
-  ['[', 'Toggle left panel'],
-  [']', 'Toggle right panel'],
-  ['?', 'Show this shortcuts list'],
-  ['Esc', 'Close overlays'],
+const APP_SHORTCUTS: [string, TKey][] = [
+  ['T', 'sc.theme'],
+  ['Space', 'sc.run'],
+  ['[', 'sc.left'],
+  [']', 'sc.right'],
+  ['?', 'sc.list'],
+  ['Esc', 'sc.esc'],
 ]
 
 function StepBadge({ n, done, active }: { n: number; done: boolean; active: boolean }) {
@@ -37,15 +43,20 @@ function StepBadge({ n, done, active }: { n: number; done: boolean; active: bool
 }
 
 export default function App() {
-  const { job, slices, rawSlices, report, start, signOff } = useAnalysis()
+  const { t, lang, toggle: toggleLang } = useI18n()
+  const { user, loading: authLoading, logout } = useAuth()
+  const { job, slices, rawSlices, report, start, signOff, reset } = useAnalysis()
   const [upload, setUpload]               = useState<UploadResponse | null>(null)
+  const [cancerType, setCancerType]       = useState<CancerType>('liver')
   const [ctx, setCtx]                     = useState<PatientContext>(DEFAULT_CTX)
   const [previewSlices, setPreviewSlices] = useState<string[]>([])
   const [ragStatus, setRagStatus]         = useState<{ chunks: number; pdf_count: number } | null>(null)
   const [ragLoading, setRagLoading]       = useState(false)
   const [showRaw, setShowRaw]             = useState(false)
   const [showHistory, setShowHistory]     = useState(false)
+  const [showAdmin, setShowAdmin]         = useState(false)
   const [showSettings, setShowSettings]   = useState(false)
+  const [detection, setDetection]         = useState<{ type: string; confidence: string; reason: string } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [leftOpen, setLeftOpen]           = useState(true)
   const [rightOpen, setRightOpen]         = useState(true)
@@ -71,13 +82,13 @@ export default function App() {
   // Toast on analysis complete
   useEffect(() => {
     if (job?.status === 'complete' && prevJobStatus.current !== 'complete') {
-      setToast({ message: 'Analysis complete — report ready', type: 'success' })
+      setToast({ message: t('toast.complete'), type: 'success' })
     }
     if (job?.status === 'failed' && prevJobStatus.current !== 'failed') {
-      setToast({ message: 'Analysis failed', type: 'error' })
+      setToast({ message: t('toast.failed'), type: 'error' })
     }
     prevJobStatus.current = job?.status ?? null
-  }, [job?.status])
+  }, [job?.status, t])
 
   // Close settings on outside click
   useEffect(() => {
@@ -92,10 +103,28 @@ export default function App() {
   const handleUploaded = (res: UploadResponse) => {
     setUpload(res)
     setPreviewSlices([])
+    setDetection(null)
     dicomApi.preview(res.study_id, res.num_files).then(r => setPreviewSlices(r.slices)).catch(() => null)
+    // Apply auto-detected cancer type if confidence is high or medium
+    if (res.suggested_cancer_type && res.detection_confidence && res.detection_confidence !== 'low') {
+      const detected = res.suggested_cancer_type as CancerType
+      setCancerType(detected)
+      setDetection({
+        type: detected,
+        confidence: res.detection_confidence,
+        reason: res.detection_reason ?? '',
+      })
+    }
   }
+  const handleCancerTypeChange = useCallback(async (ct: CancerType) => {
+    setCancerType(ct)
+    if (upload) {
+      dicomApi.updateCancerType(upload.study_id, ct).catch(() => null)
+    }
+  }, [upload])
   const handleAnalyse   = useCallback(async () => { if (upload) await start(upload.study_id, ctx) }, [upload, ctx, start])
-  const handleReset     = () => { setUpload(null); setCtx(DEFAULT_CTX); setPreviewSlices([]) }
+  const handleReset     = () => { setUpload(null); setCtx(DEFAULT_CTX); setPreviewSlices([]); setShowRaw(false); setDetection(null); reset() }
+  const handleLogout    = async () => { await logout() }
   const handleIngestRag = async () => {
     setRagLoading(true); setShowSettings(false)
     try { await ragApi.ingest(); setTimeout(() => ragApi.status().then(setRagStatus), 3000) }
@@ -151,6 +180,16 @@ export default function App() {
     ? 'bg-white/5 hover:bg-white/10 border-white/[0.08] text-slate-400 hover:text-accent'
     : 'bg-white/60 hover:bg-white/90 border-white/80 text-slate-500 hover:text-accent')
 
+  // Auth gate — must be after all hook calls
+  if (authLoading) {
+    return (
+      <div className={clsx('h-screen flex items-center justify-center', isDark ? 'bg-slate-950' : 'bg-surface')}>
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+  if (!user) return <LoginScreen isDark={isDark} />
+
   return (
     <div className={clsx('h-screen flex flex-col overflow-hidden font-sans select-none', isDark ? 'dark bg-slate-950 text-slate-200' : 'bg-surface text-slate-800', isResizing && 'cursor-col-resize')}>
 
@@ -167,7 +206,7 @@ export default function App() {
       </div>
 
       {/* ── Glass header ── */}
-      <header className={clsx('relative z-30 backdrop-blur-xl border-b flex items-center justify-between px-5 py-3 shrink-0',
+      <header className={clsx('relative z-40 backdrop-blur-xl border-b flex items-center justify-between px-5 py-3 shrink-0',
         isDark ? 'bg-slate-900/80 border-white/[0.06]' : 'bg-white/60 border-white/80')}>
         {/* Logo */}
         <div className="flex items-center gap-3 shrink-0">
@@ -177,8 +216,13 @@ export default function App() {
             </svg>
           </div>
           <div>
-            <h1 className={clsx('text-sm font-semibold leading-tight', isDark ? 'text-white' : 'text-slate-900')}>Liver Cancer AI</h1>
-            <p className="text-[10px] text-slate-400 leading-tight hidden sm:block">LI-RADS v2024 · RAG-Augmented · Local LLM</p>
+            <h1 className={clsx('text-sm font-semibold leading-tight flex items-center gap-1.5', isDark ? 'text-white' : 'text-slate-900')}>
+              LuminaDx
+              {cancerType !== 'liver' && (
+                <span className="text-[10px] font-medium text-accent">{CANCER_TYPE_META[cancerType]?.icon} {CANCER_TYPE_META[cancerType]?.label}</span>
+              )}
+            </h1>
+            <p className="text-[10px] text-slate-400 leading-tight hidden sm:block">{t('header.subtitle')}</p>
           </div>
         </div>
 
@@ -186,8 +230,13 @@ export default function App() {
         {isDone && report?.lesions?.[0] && (
           <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm hidden md:flex',
             isDark ? 'bg-slate-800/60 border-white/[0.08]' : 'bg-white/60 border-black/[0.06]')}>
-            <span className="text-[10px] text-slate-400">Top finding</span>
-            <LiRadsScore category={report.lesions[0].lirads_category} size="sm" />
+            <span className="text-[10px] text-slate-400">{t('header.topFinding')}</span>
+            <LiRadsScore
+              category={report.lesions[0].lirads_category}
+              score={report.lesions[0].score}
+              scoreSystem={report.lesions[0].score_system}
+              size="sm"
+            />
             {report.bclc_stage && (
               <span className={clsx('text-xs font-bold font-mono', isDark ? 'text-orange-300' : 'text-orange-600')}>
                 BCLC-{report.bclc_stage}
@@ -198,18 +247,51 @@ export default function App() {
 
         {/* Right actions */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* New Analysis — appears once a study is loaded; fully clears state */}
+          {uploaded && (
+            <button
+              onClick={handleReset}
+              disabled={isRunning}
+              title={t('header.newAnalysisTitle')}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold border transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed',
+                isDark
+                  ? 'bg-accent/15 border-accent/30 text-accent hover:bg-accent/25'
+                  : 'bg-accent/10 border-accent/25 text-accent hover:bg-accent/20',
+              )}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              <span className="hidden sm:inline">{t('header.newAnalysis')}</span>
+            </button>
+          )}
+
+          {/* Language toggle (EN / 繁中) */}
+          <button
+            onClick={toggleLang}
+            title={t('lang.title')}
+            aria-label={t('lang.title')}
+            className={clsx('px-2.5 h-8 rounded-lg border text-xs font-semibold transition-colors shadow-sm shrink-0',
+              isDark
+                ? 'bg-white/5 hover:bg-white/10 border-white/[0.08] text-slate-300 hover:text-accent'
+                : 'bg-white/60 hover:bg-white/90 border-white/80 text-slate-600 hover:text-accent')}
+          >
+            {lang === 'en' ? 'EN' : '繁中'}
+          </button>
+
           {ragStatus && (
             <div className={clsx('flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border hidden sm:flex',
               ragStatus.pdf_count > 0
                 ? isDark ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 : isDark ? 'bg-amber-950/60 text-amber-400 border-amber-800/40' : 'bg-amber-50 text-amber-700 border-amber-200')}>
               <span className={clsx('w-1.5 h-1.5 rounded-full', ragStatus.pdf_count > 0 ? 'bg-emerald-500' : 'bg-amber-500')} />
-              {ragStatus.pdf_count > 0 ? `${ragStatus.pdf_count} guidelines` : 'No guidelines'}
+              {ragStatus.pdf_count > 0 ? t('header.guidelines', { n: ragStatus.pdf_count }) : t('header.noGuidelines')}
             </div>
           )}
 
           {/* Theme toggle */}
-          <button onClick={() => setIsDark(d => !d)} className={clsx(PANEL_BTN, isDark && 'text-yellow-400 hover:text-yellow-300')} title="Toggle theme (T)">
+          <button onClick={() => setIsDark(d => !d)} className={clsx(PANEL_BTN, isDark && 'text-yellow-400 hover:text-yellow-300')} title={t('header.themeTitle')}>
             {isDark
               ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" /></svg>
               : <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
@@ -217,20 +299,20 @@ export default function App() {
           </button>
 
           {/* Keyboard shortcuts */}
-          <button onClick={() => setShowShortcuts(s => !s)} className={clsx(PANEL_BTN, showShortcuts && '!bg-accent/15 !border-accent/30 !text-accent')} title="Keyboard shortcuts (?)">
+          <button onClick={() => setShowShortcuts(s => !s)} className={clsx(PANEL_BTN, showShortcuts && '!bg-accent/15 !border-accent/30 !text-accent')} title={t('header.shortcutsTitle')}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
             </svg>
           </button>
 
-          <button onClick={() => setShowHistory(true)} className={PANEL_BTN} title="History">
+          <button onClick={() => setShowHistory(true)} className={PANEL_BTN} title={t('header.historyTitle')}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </button>
 
           <div className="relative" ref={settingsRef}>
-            <button onClick={() => setShowSettings(s => !s)} className={clsx(PANEL_BTN, showSettings && '!bg-accent/15 !border-accent/30 !text-accent')} title="Settings">
+            <button onClick={() => setShowSettings(s => !s)} className={clsx(PANEL_BTN, showSettings && '!bg-accent/15 !border-accent/30 !text-accent')} title={t('header.settingsTitle')}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -239,24 +321,57 @@ export default function App() {
             {showSettings && (
               <div className={clsx('absolute right-0 top-10 backdrop-blur-xl border rounded-xl shadow-2xl z-50 p-1.5 min-w-[180px] space-y-0.5',
                 isDark ? 'bg-slate-900/95 border-white/10' : 'bg-white/90 border-white/90')}>
-                <button onClick={() => { setShowHistory(true); setShowSettings(false) }} className={clsx('w-full text-left px-3 py-2 rounded-lg text-xs transition-colors font-medium flex items-center gap-2', isDark ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-700 hover:bg-accent/8 hover:text-accent')}>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  History
-                </button>
                 <button onClick={handleIngestRag} disabled={ragLoading} className={clsx('w-full text-left px-3 py-2 rounded-lg text-xs transition-colors font-medium flex items-center gap-2 disabled:opacity-50', isDark ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-700 hover:bg-accent/8 hover:text-accent')}>
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                  {ragLoading ? 'Ingesting…' : 'Ingest Guidelines'}
+                  {ragLoading ? t('settings.ingesting') : t('settings.ingest')}
                 </button>
               </div>
             )}
           </div>
+
+          {/* Logged-in user + logout */}
+          {user && (
+            <div className="flex items-center gap-2 shrink-0 pl-1 border-l border-white/[0.08]">
+              <span className={clsx('text-[10px] font-medium hidden sm:block truncate max-w-[120px]',
+                isDark ? 'text-slate-400' : 'text-slate-500')}>
+                {user.full_name}
+                {user.department && (
+                  <span className="ml-1 text-slate-500">· {user.department}</span>
+                )}
+              </span>
+
+              {/* Admin dashboard button — only visible to admin */}
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => setShowAdmin(true)}
+                  title="User Management"
+                  className={clsx(PANEL_BTN, 'text-violet-400 hover:!text-violet-300')}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round"
+                      d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                  </svg>
+                </button>
+              )}
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                className={clsx(PANEL_BTN, 'text-red-400 hover:!text-red-300')}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round"
+                    d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
       {/* ── Disclaimer ── */}
       <div className={clsx('relative z-30 text-[10px] text-center py-1.5 px-4 shrink-0 font-medium tracking-wide border-b backdrop-blur-sm',
         isDark ? 'bg-amber-950/20 border-amber-900/[0.08] text-amber-400/40' : 'bg-amber-50/70 border-amber-200/50 text-amber-700/80')}>
-        ⚠ Decision support only — not a clinical diagnosis. All findings require licensed radiologist review.
+        {t('disclaimer.top')}
       </div>
 
       {/* ── Main 3-column with resize handles ── */}
@@ -268,10 +383,10 @@ export default function App() {
           className={clsx('shrink-0 flex flex-col overflow-hidden rounded-2xl', GLASS)}
         >
           <div className={clsx('flex items-center shrink-0 border-b px-3 py-2', isDark ? 'border-white/[0.05]' : 'border-black/[0.05]', leftOpen ? 'justify-between' : 'justify-center')}>
-            {leftOpen && <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Workflow</span>}
+            {leftOpen && <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('workflow.title')}</span>}
             <button onClick={() => setLeftOpen(o => !o)}
               className={clsx('w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0', isDark ? 'text-slate-500 hover:bg-white/10 hover:text-slate-200' : 'text-slate-400 hover:bg-accent/10 hover:text-accent')}
-              title={leftOpen ? 'Collapse [' : 'Expand ['}>
+              title={leftOpen ? t('workflow.collapse') : t('workflow.expand')}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 {leftOpen ? <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /> : <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />}
               </svg>
@@ -280,28 +395,135 @@ export default function App() {
 
           {leftOpen && (
             <div className="flex-1 p-4 space-y-5 overflow-y-auto">
+
+              {/* Cancer type selector */}
+              {!uploaded && (
+                <div className="space-y-2.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Cancer Type</span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(Object.keys(CANCER_TYPE_META) as CancerType[]).map(ct => {
+                      const m = CANCER_TYPE_META[ct]
+                      return (
+                        <button
+                          key={ct}
+                          onClick={() => handleCancerTypeChange(ct)}
+                          className={clsx(
+                            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium transition-all border',
+                            cancerType === ct
+                              ? 'bg-accent text-white border-accent/50 shadow-sm shadow-accent/25'
+                              : isDark
+                                ? 'bg-white/5 text-slate-400 border-white/[0.08] hover:border-accent/40 hover:text-slate-200'
+                                : 'bg-white/60 text-slate-500 border-black/[0.07] hover:border-accent/30 hover:text-slate-700',
+                          )}
+                        >
+                          <span>{m.icon}</span>
+                          <span>{m.label}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className={clsx('text-[10px]', isDark ? 'text-slate-600' : 'text-slate-400')}>
+                    {CANCER_TYPE_META[cancerType]?.scoreSystem} scoring
+                  </p>
+                </div>
+              )}
+
               {/* Step 1 */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2.5">
                   <StepBadge n={1} done={uploaded} active={!uploaded} />
-                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>Upload DICOM</span>
+                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('step.upload')}</span>
                 </div>
                 <div className="pl-8">
                   {!uploaded ? (
-                    <UploadPanel onUploaded={handleUploaded} isDark={isDark} />
+                    <UploadPanel onUploaded={handleUploaded} cancerType={cancerType} isDark={isDark} />
                   ) : (
-                    <div className={clsx('rounded-xl p-3 space-y-2 border', isDark ? 'border-emerald-800/30 bg-emerald-950/20' : 'border-emerald-200/80 bg-emerald-50/70')}>
-                      <div className="flex items-center justify-between">
-                        <span className={clsx('text-xs font-semibold', isDark ? 'text-emerald-400' : 'text-emerald-700')}>Study loaded</span>
-                        <button onClick={handleReset} className="text-[10px] text-slate-400 hover:text-slate-500 transition-colors underline underline-offset-2">Reset</button>
+                    <div className="space-y-2">
+                      <div className={clsx('rounded-xl p-3 space-y-2 border', isDark ? 'border-emerald-800/30 bg-emerald-950/20' : 'border-emerald-200/80 bg-emerald-50/70')}>
+                        <div className="flex items-center justify-between">
+                          <span className={clsx('text-xs font-semibold', isDark ? 'text-emerald-400' : 'text-emerald-700')}>{t('step.studyLoaded')}</span>
+                          <button onClick={handleReset} className="text-[10px] text-slate-400 hover:text-slate-500 transition-colors underline underline-offset-2">{t('step.reset')}</button>
+                        </div>
+                        <div className="text-[10px] font-mono space-y-1">
+                          {[[t('field.modality'), upload?.modality ?? '—'], [t('field.files'), upload?.num_files], [t('field.series'), upload?.series.length]].map(([k, v]) => (
+                            <div key={String(k)} className="flex justify-between">
+                              <span className="text-slate-400">{k}</span>
+                              <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <div className="text-[10px] font-mono space-y-1">
-                        {[['Modality', upload?.modality ?? '—'], ['Files', upload?.num_files], ['Series', upload?.series.length]].map(([k, v]) => (
-                          <div key={String(k)} className="flex justify-between">
-                            <span className="text-slate-400">{k}</span>
-                            <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>{v}</span>
+
+                      {/* Auto-detection badge */}
+                      {detection && (
+                        <div className={clsx('rounded-xl p-3 border space-y-1.5',
+                          detection.confidence === 'high'
+                            ? isDark ? 'bg-sky-950/40 border-sky-700/40' : 'bg-sky-50 border-sky-200'
+                            : isDark ? 'bg-slate-800/40 border-white/[0.08]' : 'bg-white/50 border-black/[0.07]')}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <svg className={clsx('w-3 h-3 shrink-0',
+                                detection.confidence === 'high'
+                                  ? isDark ? 'text-sky-400' : 'text-sky-600'
+                                  : 'text-slate-400')}
+                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round"
+                                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                              </svg>
+                              <span className={clsx('text-[10px] font-semibold uppercase tracking-wide',
+                                detection.confidence === 'high'
+                                  ? isDark ? 'text-sky-400' : 'text-sky-700'
+                                  : isDark ? 'text-slate-400' : 'text-slate-500')}>
+                                Auto-detected: {CANCER_TYPE_META[detection.type as CancerType]?.icon} {CANCER_TYPE_META[detection.type as CancerType]?.label}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={clsx('text-[9px] font-bold uppercase px-1.5 py-0.5 rounded',
+                                detection.confidence === 'high'
+                                  ? 'bg-sky-500 text-white'
+                                  : 'bg-slate-500 text-white')}>
+                                {detection.confidence}
+                              </span>
+                              <button onClick={() => setDetection(null)}
+                                className="text-slate-400 hover:text-slate-600 text-xs leading-none">×</button>
+                            </div>
                           </div>
-                        ))}
+                          {detection.reason && (
+                            <p className={clsx('text-[9px] font-mono leading-relaxed truncate',
+                              isDark ? 'text-slate-500' : 'text-slate-400')}
+                              title={detection.reason}>
+                              {detection.reason}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Post-upload cancer type override */}
+                      <div className="space-y-1.5">
+                        <span className={clsx('text-[10px] font-semibold uppercase tracking-widest', isDark ? 'text-slate-500' : 'text-slate-400')}>Cancer Type</span>
+                        <div className="grid grid-cols-2 gap-1">
+                          {(Object.keys(CANCER_TYPE_META) as CancerType[]).map(ct => {
+                            const m = CANCER_TYPE_META[ct]
+                            return (
+                              <button
+                                key={ct}
+                                onClick={() => handleCancerTypeChange(ct)}
+                                disabled={isRunning}
+                                className={clsx(
+                                  'flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all border disabled:opacity-40 disabled:cursor-not-allowed',
+                                  cancerType === ct
+                                    ? 'bg-accent text-white border-accent/50 shadow-sm shadow-accent/25'
+                                    : isDark
+                                      ? 'bg-white/5 text-slate-400 border-white/[0.08] hover:border-accent/40 hover:text-slate-200'
+                                      : 'bg-white/60 text-slate-500 border-black/[0.07] hover:border-accent/30 hover:text-slate-700',
+                                )}
+                              >
+                                <span>{m.icon}</span>
+                                <span>{m.label}</span>
+                              </button>
+                            )
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -312,36 +534,39 @@ export default function App() {
               <div className={clsx('space-y-3 transition-opacity duration-300', !uploaded && 'opacity-30 pointer-events-none')}>
                 <div className="flex items-center gap-2.5">
                   <StepBadge n={2} done={hasCtx} active={uploaded && !hasCtx} />
-                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>Clinical Context</span>
-                  <span className="text-[10px] text-slate-400 ml-auto">optional</span>
+                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('step.context')}</span>
+                  <span className="text-[10px] text-slate-400 ml-auto">{t('step.optional')}</span>
                 </div>
                 {uploaded && (
                   <div className="pl-8 space-y-2.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      {(['cirrhosis', 'hepatitis_b', 'hepatitis_c', 'prior_hcc'] as const).map(key => {
-                        const labels = { cirrhosis: 'Cirrhosis', hepatitis_b: 'Hep B', hepatitis_c: 'Hep C', prior_hcc: 'Prior HCC' }
-                        return (
-                          <button key={key} onClick={() => setCtx(p => ({ ...p, [key]: !p[key] }))}
-                            className={clsx('px-2.5 py-1 rounded-full text-xs font-medium transition-all',
-                              ctx[key] ? 'bg-accent text-white shadow-sm shadow-accent/25'
-                                : isDark ? 'bg-white/5 text-slate-500 border border-white/[0.08] hover:border-accent/40 hover:text-slate-300'
-                                : 'bg-white/60 text-slate-500 border border-black/[0.08] hover:border-accent/30 hover:text-slate-700')}>
-                            {labels[key]}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 shrink-0">AFP</span>
-                      <div className="relative flex-1">
-                        <input type="number" value={ctx.afp_level ?? ''}
-                          onChange={e => setCtx(p => ({ ...p, afp_level: e.target.value ? Number(e.target.value) : null }))}
-                          placeholder="—" className={clsx(INPUT, 'pl-2.5 pr-10')} />
-                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 pointer-events-none">ng/mL</span>
+                    {/* Liver-specific context chips */}
+                    {cancerType === 'liver' && (<>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(['cirrhosis', 'hepatitis_b', 'hepatitis_c', 'prior_hcc'] as const).map(key => {
+                          const labelKey = { cirrhosis: 'ctx.cirrhosis', hepatitis_b: 'ctx.hepatitis_b', hepatitis_c: 'ctx.hepatitis_c', prior_hcc: 'ctx.prior_hcc' } as const
+                          return (
+                            <button key={key} onClick={() => setCtx(p => ({ ...p, [key]: !p[key] }))}
+                              className={clsx('px-2.5 py-1 rounded-full text-xs font-medium transition-all',
+                                ctx[key] ? 'bg-accent text-white shadow-sm shadow-accent/25'
+                                  : isDark ? 'bg-white/5 text-slate-500 border border-white/[0.08] hover:border-accent/40 hover:text-slate-300'
+                                  : 'bg-white/60 text-slate-500 border border-black/[0.08] hover:border-accent/30 hover:text-slate-700')}>
+                              {t(labelKey[key])}
+                            </button>
+                          )
+                        })}
                       </div>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 shrink-0">{t('ctx.afp')}</span>
+                        <div className="relative flex-1">
+                          <input type="number" value={ctx.afp_level ?? ''}
+                            onChange={e => setCtx(p => ({ ...p, afp_level: e.target.value ? Number(e.target.value) : null }))}
+                            placeholder="—" className={clsx(INPUT, 'pl-2.5 pr-10')} />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 pointer-events-none">{t('ctx.afpUnit')}</span>
+                        </div>
+                      </div>
+                    </>)}
                     <textarea value={ctx.notes} onChange={e => setCtx(p => ({ ...p, notes: e.target.value }))}
-                      rows={2} placeholder="Clinical notes…"
+                      rows={2} placeholder={t('ctx.notes')}
                       className={clsx(INPUT.replace('font-mono', 'resize-none'), 'px-2.5 py-1.5')} />
                   </div>
                 )}
@@ -351,7 +576,7 @@ export default function App() {
               <div className={clsx('space-y-3 transition-opacity duration-300', !uploaded && 'opacity-30 pointer-events-none')}>
                 <div className="flex items-center gap-2.5">
                   <StepBadge n={3} done={isDone} active={uploaded && !isDone} />
-                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>Run Analysis</span>
+                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('step.run')}</span>
                 </div>
                 {uploaded && (
                   <div className="pl-8">
@@ -361,7 +586,7 @@ export default function App() {
                           : isDone
                             ? isDark ? 'bg-white/5 border border-white/[0.08] text-slate-400 hover:border-accent/40 hover:text-accent' : 'bg-white/60 border border-black/[0.08] text-slate-500 hover:border-accent/30 hover:text-accent'
                             : 'bg-accent hover:bg-violet-600 active:bg-violet-700 text-white shadow-lg shadow-violet-300/30')}>
-                      {isRunning ? 'Analysing…' : isDone ? '↺ Run Again' : 'Run Analysis (Space)'}
+                      {isRunning ? t('run.analysing') : isDone ? t('run.again') : t('run.start')}
                     </button>
                   </div>
                 )}
@@ -373,9 +598,9 @@ export default function App() {
                   <ProgressTracker job={job} isDark={isDark} />
                   {job.status === 'failed' && job.error && (
                     <div className={clsx('rounded-xl p-3 space-y-1 border', isDark ? 'bg-red-950/30 border-red-900/30' : 'bg-red-50/80 border-red-200/70')}>
-                      <p className={clsx('text-xs font-semibold', isDark ? 'text-red-400' : 'text-red-600')}>Analysis failed</p>
+                      <p className={clsx('text-xs font-semibold', isDark ? 'text-red-400' : 'text-red-600')}>{t('run.failed')}</p>
                       <p className={clsx('text-[10px] font-mono leading-relaxed break-words', isDark ? 'text-red-400/70' : 'text-red-500')}>{job.error}</p>
-                      <button onClick={handleReset} className={clsx('text-[10px] underline underline-offset-2 transition-colors', isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-700')}>Reset</button>
+                      <button onClick={handleReset} className={clsx('text-[10px] underline underline-offset-2 transition-colors', isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-700')}>{t('step.reset')}</button>
                     </div>
                   )}
                 </div>
@@ -383,9 +608,11 @@ export default function App() {
 
               {ragStatus && ragStatus.chunks === 0 && (
                 <div className={clsx('rounded-xl p-3 text-xs space-y-1 border', isDark ? 'bg-amber-950/30 border-amber-900/30' : 'bg-amber-50/80 border-amber-200/60')}>
-                  <p className={clsx('font-semibold', isDark ? 'text-amber-400/90' : 'text-amber-700')}>No guidelines loaded</p>
+                  <p className={clsx('font-semibold', isDark ? 'text-amber-400/90' : 'text-amber-700')}>{t('rag.noneTitle')}</p>
                   <p className={clsx('leading-relaxed text-[10px]', isDark ? 'text-amber-400/60' : 'text-amber-600/80')}>
-                    Add PDFs to <code className={clsx('font-mono', isDark ? 'text-amber-300/80' : 'text-amber-600')}>backend/data/knowledge_base/</code> → Ingest.
+                    {t('rag.noneBody').split('{path}')[0]}
+                    <code className={clsx('font-mono', isDark ? 'text-amber-300/80' : 'text-amber-600')}>backend/data/knowledge_base/</code>
+                    {t('rag.noneBody').split('{path}')[1]}
                   </p>
                 </div>
               )}
@@ -428,18 +655,18 @@ export default function App() {
           <div className={clsx('flex items-center shrink-0 border-b px-3 py-2', isDark ? 'border-white/[0.05]' : 'border-black/[0.05]', rightOpen ? 'justify-between' : 'justify-center')}>
             {rightOpen && (
               <div className="flex items-center gap-2">
-                <h2 className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>AI Report</h2>
+                <h2 className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('report.title')}</h2>
                 {report && (
                   <div className={clsx('flex rounded-lg overflow-hidden border text-[10px] font-mono', isDark ? 'border-white/[0.08]' : 'border-black/[0.07]')}>
-                    <button onClick={() => setShowRaw(false)} className={clsx('px-2.5 py-1 transition-colors', !showRaw ? 'bg-accent text-white' : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')}>Structured</button>
-                    <button onClick={() => setShowRaw(true)}  className={clsx('px-2.5 py-1 transition-colors', showRaw  ? 'bg-accent text-white' : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')}>Raw</button>
+                    <button onClick={() => setShowRaw(false)} className={clsx('px-2.5 py-1 transition-colors', !showRaw ? 'bg-accent text-white' : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')}>{t('report.structured')}</button>
+                    <button onClick={() => setShowRaw(true)}  className={clsx('px-2.5 py-1 transition-colors', showRaw  ? 'bg-accent text-white' : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')}>{t('report.raw')}</button>
                   </div>
                 )}
               </div>
             )}
             <button onClick={() => setRightOpen(o => !o)}
               className={clsx('w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0', isDark ? 'text-slate-500 hover:bg-white/10 hover:text-slate-200' : 'text-slate-400 hover:bg-accent/10 hover:text-accent')}
-              title={rightOpen ? 'Collapse ]' : 'Expand ]'}>
+              title={rightOpen ? t('right.collapse') : t('right.expand')}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 {rightOpen ? <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /> : <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />}
               </svg>
@@ -456,6 +683,7 @@ export default function App() {
                     report={report} jobId={job?.job_id ?? ''} signOff={job?.sign_off ?? null}
                     onSignOff={signOff} isDark={isDark}
                     currentSlice={slices.length ? slices[Math.floor(slices.length / 2)] : undefined}
+                    currentUserName={user?.full_name}
                   />
                 )
               ) : (
@@ -467,8 +695,8 @@ export default function App() {
                       </svg>
                     </div>
                     <div>
-                      <p className={clsx('text-sm font-medium', isDark ? 'text-slate-600' : 'text-slate-400')}>No report yet</p>
-                      <p className={clsx('text-xs mt-1 leading-relaxed', isDark ? 'text-slate-700' : 'text-slate-300')}>Upload a scan and run analysis</p>
+                      <p className={clsx('text-sm font-medium', isDark ? 'text-slate-600' : 'text-slate-400')}>{t('report.emptyTitle')}</p>
+                      <p className={clsx('text-xs mt-1 leading-relaxed', isDark ? 'text-slate-700' : 'text-slate-300')}>{t('report.emptyBody')}</p>
                     </div>
                   </div>
                 </div>
@@ -485,23 +713,26 @@ export default function App() {
           <div className={clsx('rounded-2xl p-6 w-80 border shadow-2xl backdrop-blur-xl', isDark ? 'bg-slate-900/95 border-white/10' : 'bg-white/92 border-white/80')}
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className={clsx('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-slate-800')}>Keyboard Shortcuts</h3>
+              <h3 className={clsx('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-slate-800')}>{t('shortcuts.title')}</h3>
               <button onClick={() => setShowShortcuts(false)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
             </div>
             <div className="space-y-2.5">
-              {APP_SHORTCUTS.map(([key, desc]) => (
+              {APP_SHORTCUTS.map(([key, descKey]) => (
                 <div key={key} className="flex items-center justify-between gap-4">
                   <kbd className={clsx('text-xs font-mono px-2 py-0.5 rounded-md border', isDark ? 'bg-slate-800 border-white/10 text-accent' : 'bg-slate-100 border-slate-200 text-accent')}>{key}</kbd>
-                  <span className={clsx('text-xs text-right', isDark ? 'text-slate-400' : 'text-slate-500')}>{desc}</span>
+                  <span className={clsx('text-xs text-right', isDark ? 'text-slate-400' : 'text-slate-500')}>{t(descKey)}</span>
                 </div>
               ))}
             </div>
-            <p className={clsx('text-[10px] text-center mt-4', isDark ? 'text-slate-700' : 'text-slate-400')}>Click anywhere to close · Esc</p>
+            <p className={clsx('text-[10px] text-center mt-4', isDark ? 'text-slate-700' : 'text-slate-400')}>{t('shortcuts.closeHint')}</p>
           </div>
         </div>
       )}
 
       <HistoryPanel open={showHistory} onClose={() => setShowHistory(false)} isDark={isDark} />
+      {user?.role === 'admin' && (
+        <AdminDashboard open={showAdmin} onClose={() => setShowAdmin(false)} isDark={isDark} currentUser={user} />
+      )}
       {toast && <Toast message={toast.message} type={toast.type} isDark={isDark} onClose={() => setToast(null)} />}
     </div>
   )

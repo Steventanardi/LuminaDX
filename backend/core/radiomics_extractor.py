@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
+from config import settings
+
 try:
     import SimpleITK as sitk
     from radiomics import featureextractor as _fe
@@ -93,7 +95,7 @@ def _interpret(features: Dict[str, Any]) -> list[str]:
     return hints
 
 
-def extract(image_nifti: Path, mask_nifti: Optional[Path]) -> Dict[str, Any]:
+def extract(image_nifti: Path, mask_nifti: Optional[Path], modality: str = "CT") -> Dict[str, Any]:
     if not _AVAILABLE:
         return {"error": "PyRadiomics not installed"}
     if mask_nifti is None or not mask_nifti.exists():
@@ -107,14 +109,20 @@ def extract(image_nifti: Path, mask_nifti: Optional[Path]) -> Dict[str, Any]:
         for cls in ("shape", "firstorder", "glcm", "glrlm", "glszm", "gldm", "ngtdm"):
             extractor.enableFeatureClassByName(cls)
 
-        # Enable wavelet and LoG image types for >1 000 total features
+        # Original always on. Wavelet/LoG add ~1,000 features (and most of the
+        # runtime) but are not used downstream — only enable when explicitly
+        # requested via settings.radiomics_extended.
         extractor.enableImageTypeByName("Original")
-        extractor.enableImageTypeByName("Wavelet")
-        extractor.enableImageTypeByName("LoG", customArgs={"sigma": [1.0, 2.0, 3.0]})
+        if settings.radiomics_extended:
+            extractor.enableImageTypeByName("Wavelet")
+            extractor.enableImageTypeByName("LoG", customArgs={"sigma": [1.0, 2.0, 3.0]})
 
+        # CT HU values are already quantitative — normalizing distorts feature
+        # semantics and hurts reproducibility. Normalize MRI only.
+        is_mri = str(modality).upper() in ("MR", "MRI")
         extractor.settings.update({
             "binWidth": 25,
-            "normalize": True,
+            "normalize": is_mri,
             "normalizeScale": 100,
             "resampledPixelSpacing": None,  # keep native voxel spacing
             "interpolator": sitk.sitkBSpline,

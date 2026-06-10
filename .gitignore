@@ -55,3 +55,18 @@ frontend/dist/
 
 # ─── OS files ───
 *.log
+
+# ─── Junk files (accidental creation) ───
+handleCancerTypeChange*
+model
+backend/{ct
+frontend/{
+frontend/{ct
+frontend/1
+frontend/4.0
+
+# ─── Dev agent configs ───
+CLAUDE.md
+Merlin.md
+Radiology-Infer-Mini.md
+Personal/Reference/

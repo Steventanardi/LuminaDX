@@ -7,21 +7,24 @@ from loguru import logger
 from pathlib import Path
 
 from api.routes import analysis, audit, dicom, rag
+from api.routes import auth as auth_router
 from config import settings
+from core.database import init_db
 from core.rag_engine import rag_engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Starting Liver Cancer AI Diagnostics backend")
+    logger.info("Starting LuminaDx multi-cancer AI diagnostics backend")
+    init_db()
     await rag_engine.initialize()
     yield
     logger.info("Shutdown complete")
 
 
 app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0",
+    title="LuminaDx — Multi-Cancer AI Diagnostics",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -33,6 +36,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(dicom.router, prefix="/api/dicom", tags=["DICOM"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["Analysis"])
 app.include_router(rag.router, prefix="/api/rag", tags=["RAG"])
@@ -41,7 +45,7 @@ app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "rag_chunks": rag_engine.chunk_count}
+    return {"status": "ok", "rag_chunks": rag_engine.chunk_count, "version": "0.2.0"}
 
 
 @app.get("/api/model-card", response_class=PlainTextResponse)

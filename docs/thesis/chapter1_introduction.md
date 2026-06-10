@@ -10,7 +10,7 @@ The prognosis for HCC is strongly stage-dependent. When detected at an early sta
 
 The primary imaging modalities for liver cancer diagnosis are contrast-enhanced computed tomography (CT) and magnetic resonance imaging (MRI). These modalities are central to the non-invasive diagnosis of HCC because HCC exhibits a characteristic vascular pattern — arterial phase hyperenhancement (APHE) followed by portal venous or delayed washout — that is considered pathognomonic and, under specific criteria, sufficient for diagnosis without histological confirmation [6]. The Liver Imaging Reporting and Data System (LI-RADS), developed by the American College of Radiology (ACR) and updated to version 2024, provides a standardised framework for the reporting and scoring of liver observations in at-risk patients, assigning categories from LR-1 (definitely benign) to LR-5 (definitely HCC), with additional categories for probable or definite malignancy not specific to HCC (LR-M) and tumour in vein (LR-TIV) [7].
 
-Despite the availability of this structured reporting framework, the accurate interpretation of liver imaging remains a highly specialised skill. Proficiency in LI-RADS requires extensive training and experience, yet even among experienced radiologists, inter-reader variability in LI-RADS category assignment has been reported, with weighted kappa values ranging from 0.49 to 0.72 in multicentre studies [8]. This variability is clinically consequential: misclassification of an LR-4 observation as LR-3 may lead to delayed diagnosis, while over-classification of a benign lesion may lead to unnecessary biopsy or treatment. Furthermore, the global shortage of radiologists — estimated at 16,000 unfilled positions in the United States alone and substantially larger in low- and middle-income countries — creates diagnostic bottlenecks and increased workload that may further compromise accuracy [9].
+Despite the availability of this structured reporting framework, the accurate interpretation of liver imaging remains a highly specialised skill. Proficiency in LI-RADS requires extensive training and experience, yet even among experienced radiologists, inter-reader variability in LI-RADS category assignment has been reported, with weighted kappa values ranging from 0.49 to 0.72 in multicentre studies [8]. This variability is clinically consequential: misclassification of an LR-4 observation as LR-3 may lead to delayed diagnosis, while over-classification of a benign lesion may lead to unnecessary biopsy or treatment. Furthermore, a growing shortage of radiologists — documented by professional bodies across high-income systems and more acute still in low- and middle-income countries — creates diagnostic bottlenecks and increased workload that may further compromise accuracy [9].
 
 These challenges create a compelling case for the development of artificial intelligence (AI)-based decision support tools that can assist radiologists in the structured interpretation of liver imaging studies.
 
@@ -34,13 +34,7 @@ The convergence of these technologies — automated segmentation, radiomics, VLM
 
 Current AI tools for liver cancer imaging are typically narrow in scope, addressing individual sub-tasks (e.g., segmentation only, or classification only) rather than the full diagnostic workflow from image intake to structured clinical report. Existing systems also raise concerns regarding data privacy: cloud-based AI services require the transmission of patient imaging data to external servers, creating regulatory challenges under frameworks such as the Health Insurance Portability and Accountability Act (HIPAA) in the United States and the General Data Protection Regulation (GDPR) in the European Union. Furthermore, most published AI tools lack integration with the LI-RADS reporting standard, limiting their clinical applicability.
 
-There is therefore an unmet need for an integrated, privacy-preserving AI decision support system that can:
-
-1. Accept real-world clinical imaging inputs (DICOM-format CT and MRI studies);
-2. Perform automated liver and lesion segmentation and quantitative radiomics analysis;
-3. Generate a structured, LI-RADS-compliant diagnostic report using a vision-language model augmented with clinical guideline retrieval;
-4. Support a radiologist review and sign-off workflow consistent with regulatory requirements for AI-based clinical decision support;
-5. Operate entirely on local infrastructure, ensuring that no patient data leaves the clinical environment.
+There is therefore an unmet need for an integrated, privacy-preserving AI decision support system that spans the complete diagnostic workflow — from DICOM intake, through automated segmentation and quantitative analysis, to a structured, LI-RADS-aligned report — while running entirely on local infrastructure and preserving a radiologist-in-the-loop. Addressing this need is the central aim of this thesis; the specific objectives through which it is pursued are set out in Section 1.4, and its novel contributions are summarised in Section 1.6.
 
 ---
 
@@ -73,6 +67,7 @@ This work focuses on the development and evaluation of a decision support tool f
 - **Therapeutic planning:** The system produces a diagnostic impression and staging estimate but does not generate treatment recommendations beyond referencing Barcelona Clinic Liver Cancer (BCLC) staging guidelines in general terms.
 - **Non-HCC primary liver tumours:** The primary focus is HCC. While the system may flag observations as LR-M (possibly malignant, non-HCC specific), detailed characterisation of cholangiocarcinoma or hepatic metastases is outside the scope of this iteration.
 - **Paediatric imaging:** All validation is conducted on adult patients.
+- **MRI validation:** Although the system is designed to accept both CT and MRI DICOM studies, quantitative validation in this thesis is conducted on contrast-enhanced CT only. MRI support is implemented but not formally evaluated in this iteration, and remains a direction for future work.
 - **Real-time clinical deployment:** The system is evaluated as a research prototype. It has not undergone the regulatory review required for deployment as a medical device under EU MDR 2017/745 or FDA 510(k)/De Novo pathways.
 
 Key technical limitations include the use of a 7-billion parameter vision-language model (LLaVA-7B), which, while capable of image-grounded reasoning, is substantially smaller than frontier multimodal models and may produce less nuanced radiological descriptions. The segmentation pipeline relies on TotalSegmentator's `liver_lesions` task, which was trained on a general clinical dataset; its performance on atypical or early-stage lesions is known to be lower [14]. Radiomic feature stability depends on consistent image acquisition parameters, which may vary across institutions and scanner models.
@@ -131,7 +126,7 @@ The remainder of this thesis is organised as follows:
 
 [8] A. G. van der Pol et al., "Inter-reader agreement of LI-RADS v2018 for CT and MRI: A systematic review and meta-analysis," *European Radiology*, vol. 31, no. 11, pp. 8526–8538, 2021.
 
-[9] R. Geis et al., "Ethics of Artificial Intelligence in Radiology: Summary of the Joint European and North American Multisociety Statement," *Radiology*, vol. 293, no. 2, pp. 436–440, 2019.
+[9] The Royal College of Radiologists, "Clinical Radiology UK Workforce Census 2022 Report," RCR, London, 2023.
 
 [10] R. Shen et al., "Deep learning in medical image analysis," *Annual Review of Biomedical Engineering*, vol. 19, pp. 221–248, 2017.
 
@@ -145,7 +140,7 @@ The remainder of this thesis is organised as follows:
 
 [15] P. Lambin et al., "Radiomics: extracting more information from medical images using advanced feature analysis," *European Journal of Cancer*, vol. 48, no. 4, pp. 441–446, 2012.
 
-[16] Y. Liu et al., "Radiomics of multiparametric MRI for pretreatment prediction of pathologic complete response to neoadjuvant chemotherapy in breast cancer: a multicenter study," *Clinical Cancer Research*, vol. 25, no. 12, pp. 3538–3547, 2019.
+[16] X. Xu et al., "Radiomic analysis of contrast-enhanced CT predicts microvascular invasion and outcome in hepatocellular carcinoma," *Journal of Hepatology*, vol. 70, no. 6, pp. 1133–1144, 2019.
 
 [17] J. J. M. van Griethuysen et al., "Computational Radiomics System to Decode the Radiographic Phenotype," *Cancer Research*, vol. 77, no. 21, pp. e104–e107, 2017.
 

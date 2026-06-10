@@ -50,10 +50,18 @@ def _free_gpu() -> None:
     gc.collect()
 
 
+# Max wall-clock for a single TotalSegmentator subprocess. A hung run (stuck
+# nnU-Net worker, GPU fault) would otherwise block the job forever.
+_TOTALSEG_TIMEOUT_S = 900
+
+
 def _run_totalseg(args: dict) -> None:
     cmd = [sys.executable, str(_TOTALSEG_SCRIPT), json.dumps(args)]
     logger.info(f"TotalSegmentator subprocess: task={args.get('task','total')} roi={args.get('roi_subset')}")
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=_TOTALSEG_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"TotalSegmentator timed out after {_TOTALSEG_TIMEOUT_S}s")
     if proc.stdout:
         logger.info(f"TotalSegmentator stdout: {proc.stdout[-500:]}")
     if proc.returncode != 0:
@@ -65,50 +73,72 @@ def run_segmentation(
     input_nifti: Path,
     output_dir: Path,
     device: str = "gpu",
+    modality: str = "CT",
+    spec=None,          # Optional[SegmentationSpec] from cancer module
 ) -> SegmentationResult:
     output_dir.mkdir(parents=True, exist_ok=True)
     result = SegmentationResult()
 
-    liver_out = output_dir / "liver"
+    # TotalSegmentator's `liver` and `liver_lesions` tasks are CT-trained. Running
+    # them on MRI produces unreliable masks, so skip segmentation for MRI and let
+    # the pipeline fall back to vision-LLM-only analysis of the montage.
+    if str(modality).upper() in ("MR", "MRI"):
+        logger.info("MRI study — skipping CT-trained segmentation (LLM-only analysis)")
+        return result
+
+    # Use spec from cancer module; fall back to liver defaults for backward compat
+    from core.modules.base import SegmentationSpec as _Spec
+    if spec is None:
+        spec = _Spec(
+            organ_roi=["liver"],
+            lesion_task="liver_lesions",
+            tumor_mask_names=["liver_lesions.nii.gz", "liver_tumor.nii.gz",
+                              "liver_tumour.nii.gz", "hepatic_tumor.nii.gz"],
+        )
+
+    organ_out = output_dir / "organ"
     tumor_out = output_dir / "tumor"
 
     try:
-        logger.info("Segmenting liver (subprocess)...")
-        _run_totalseg({
-            "input": str(input_nifti),
-            "output": str(liver_out),
-            "roi_subset": ["liver"],
-            "device": device,
-            "fast": True,
-        })
+        if spec.organ_roi:
+            logger.info(f"Segmenting organs {spec.organ_roi} (subprocess)...")
+            _run_totalseg({
+                "input": str(input_nifti),
+                "output": str(organ_out),
+                "roi_subset": spec.organ_roi,
+                "device": device,
+                "fast": True,
+            })
 
-        logger.info("Segmenting liver lesions (subprocess)...")
-        _run_totalseg({
-            "input": str(input_nifti),
-            "output": str(tumor_out),
-            "task": "liver_lesions",
-            "device": device,
-        })
+        if spec.lesion_task:
+            logger.info(f"Segmenting lesions task={spec.lesion_task} (subprocess)...")
+            _run_totalseg({
+                "input": str(input_nifti),
+                "output": str(tumor_out),
+                "task": spec.lesion_task,
+                "device": device,
+            })
 
     finally:
         _free_gpu()
 
-    # Load liver mask
-    liver_path = liver_out / "liver.nii.gz"
-    if liver_path.exists():
-        img = nib.load(str(liver_path))
+    # Load primary organ mask (liver or first roi)
+    primary_roi = (spec.organ_roi[0] if spec.organ_roi else "liver")
+    organ_path = organ_out / f"{primary_roi}.nii.gz"
+    if organ_path.exists():
+        img = nib.load(str(organ_path))
         result.liver_mask = img.get_fdata().astype(np.uint8)
         result.affine = img.affine
         zooms = img.header.get_zooms()
         result.voxel_spacing = (float(zooms[0]), float(zooms[1]), float(zooms[2]))
         voxel_ml = np.prod(result.voxel_spacing) / 1000.0
         result.liver_volume_ml = float(np.sum(result.liver_mask)) * voxel_ml
-        logger.info(f"Liver volume: {result.liver_volume_ml:.0f} mL")
+        logger.info(f"Organ ({primary_roi}) volume: {result.liver_volume_ml:.0f} mL")
     else:
-        logger.warning("Liver mask not found — segmentation may have failed")
+        logger.warning(f"Organ mask not found ({organ_path}) — segmentation may have failed")
 
-    # Load tumor mask (TotalSegmentator uses different filenames)
-    for candidate in ["liver_lesions.nii.gz", "liver_tumor.nii.gz", "liver_tumour.nii.gz", "hepatic_tumor.nii.gz"]:
+    # Load tumor/lesion mask
+    for candidate in spec.tumor_mask_names:
         p = tumor_out / candidate
         if p.exists():
             t_img = nib.load(str(p))

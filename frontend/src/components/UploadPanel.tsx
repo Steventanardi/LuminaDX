@@ -2,9 +2,14 @@ import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import clsx from 'clsx'
 import { dicomApi } from '../services/api'
+import { useI18n } from '../i18n'
 import type { UploadResponse } from '../types'
 
-interface Props { onUploaded: (res: UploadResponse) => void; isDark?: boolean }
+interface Props {
+  onUploaded: (res: UploadResponse) => void
+  cancerType?: string
+  isDark?: boolean
+}
 
 function _detectType(files: File[]): 'nifti' | 'image' | 'dicom' {
   const first = files[0]?.name ?? ''
@@ -13,20 +18,21 @@ function _detectType(files: File[]): 'nifti' | 'image' | 'dicom' {
   return 'dicom'
 }
 
-export default function UploadPanel({ onUploaded, isDark = false }: Props) {
+export default function UploadPanel({ onUploaded, cancerType = 'liver', isDark = false }: Props) {
+  const { t } = useI18n()
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const onDrop = useCallback(async (accepted: File[]) => {
     if (!accepted.length) return
     setError(null)
-    if (accepted.some(f => f.size > 500 * 1024 * 1024)) { setError('One or more files exceed 500 MB'); return }
-    if (_detectType(accepted) === 'dicom' && accepted.length < 2) { setError('Upload at least 2 DICOM slices.'); return }
+    if (accepted.some(f => f.size > 500 * 1024 * 1024)) { setError(t('upload.errTooBig')); return }
+    if (_detectType(accepted) === 'dicom' && accepted.length < 2) { setError(t('upload.errMinSlices')); return }
     setUploading(true)
-    try { onUploaded(await dicomApi.upload(accepted)) }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Upload failed') }
+    try { onUploaded(await dicomApi.upload(accepted, cancerType)) }
+    catch (e: unknown) { setError(e instanceof Error ? e.message : t('upload.errFailed')) }
     finally { setUploading(false) }
-  }, [onUploaded])
+  }, [onUploaded, cancerType, t])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -46,20 +52,20 @@ export default function UploadPanel({ onUploaded, isDark = false }: Props) {
         {uploading ? (
           <div className="space-y-1.5">
             <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-slate-400 text-xs font-medium">Uploading…</p>
+            <p className="text-slate-400 text-xs font-medium">{t('upload.uploading')}</p>
           </div>
         ) : isDragActive ? (
           <div className="space-y-1">
-            <p className="text-accent text-sm font-semibold">Drop files here</p>
-            <p className="text-accent/60 text-xs">Release to upload</p>
+            <p className="text-accent text-sm font-semibold">{t('upload.dropHere')}</p>
+            <p className="text-accent/60 text-xs">{t('upload.release')}</p>
           </div>
         ) : (
           <div className="space-y-1.5">
             <svg className={clsx('w-7 h-7 mx-auto', isDark ? 'text-slate-600' : 'text-slate-300')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
             </svg>
-            <p className={clsx('text-xs font-medium', isDark ? 'text-slate-300' : 'text-slate-600')}>Drop files or click to browse</p>
-            <p className="text-slate-400 text-[10px]">DICOM · NIfTI · JPG/PNG · max 500 MB</p>
+            <p className={clsx('text-xs font-medium', isDark ? 'text-slate-300' : 'text-slate-600')}>{t('upload.browse')}</p>
+            <p className="text-slate-400 text-[10px]">{t('upload.formats')}</p>
           </div>
         )}
       </div>
