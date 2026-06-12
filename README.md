@@ -46,6 +46,140 @@
 
 ---
 
+## 🚀 Installation & Quick Start
+
+LuminaDx is designed to run locally to ensure patient data privacy. Follow these precise steps to set up the environment on your machine.
+
+### Prerequisites
+
+| Requirement | Version / Detail | Purpose |
+|:---|:---|:---|
+| **OS** | Windows 10/11, Linux, macOS | Primary development target is Windows. |
+| **Python** | 3.11+ | Backend runtime. |
+| **Node.js** | 18+ | Frontend build and development server. |
+| **Ollama** | Latest | Local LLM server for Vision-Language Models. |
+| **CUDA** | 12.1+ | GPU acceleration (highly recommended). |
+| **GPU** | 8 GB+ VRAM | Required for local AI models (RTX 3080/4070 or better). |
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Steventanardi/LuminaDX.git
+cd LuminaDX
+```
+
+### 2. Automated Setup (Windows Only)
+
+For Windows users, an automated setup script is provided. It sets up the Python virtual environment, installs dependencies, and pulls required models.
+
+1. Open PowerShell. If execution policies restrict running scripts, run it as Administrator or bypass the policy: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
+2. Run the setup script from the project root:
+   ```powershell
+   .\scripts\setup.ps1
+   ```
+
+*Note: The script attempts to install PyTorch with CUDA 12.1 support and pull standard Ollama models.*
+
+### 3. Manual Setup (All Platforms)
+
+If you prefer manual installation or are on Linux/macOS, follow these steps:
+
+#### Backend Setup
+
+```bash
+cd backend
+
+# Create virtual environment
+python -m venv .venv
+
+# Activate (Windows)
+.venv\Scripts\activate
+# Activate (Linux/macOS)
+# source .venv/bin/activate
+
+# Install PyTorch with CUDA 12.1 (Adjust if using a different CUDA version)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# Install backend dependencies
+pip install -r requirements.txt
+
+# Configure environment variables
+cp .env.example .env
+```
+*Important:* Edit `.env` and ensure `AUTH_SECRET_KEY` is generated (e.g., using `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
+
+#### Frontend Setup
+
+Open a new terminal window:
+
+```bash
+cd frontend
+npm install
+```
+
+#### Ollama Models
+
+Install [Ollama](https://ollama.com/) and start the server, then pull the necessary models:
+
+```bash
+# Start Ollama server (usually runs automatically after installation)
+ollama serve
+
+# Pull the default medical VLM
+ollama pull medgemma:4b-it-q8_0
+
+# Pull the embedding model for RAG
+ollama pull nomic-embed-text
+```
+
+Depending on the cancer types you plan to analyze, you should also pull the recommended models:
+- `ollama pull qwen2.5vl:7b` (Default for Lung and Colorectal)
+- `ollama pull minicpm-v:8b` (Default for Skin and Breast)
+
+### 4. Database & Admin Setup
+
+Before launching the app, you need to seed the database with an initial admin account. Ensure your backend virtual environment is activated.
+
+```bash
+cd backend
+python -m scripts.seed_admin
+```
+*By default, this creates an account with:*
+- **Email:** `admin@luminadx.local`
+- **Password:** `admin123` *(Note: You can change this by setting the `ADMIN_PASSWORD` environment variable before running the script).*
+
+### 5. Launch the Application
+
+**One-click (Windows):**
+Simply double-click the `Launch.bat` file in the project root. It will start both the backend and frontend servers in separate windows.
+
+**Manual (Terminal):**
+```bash
+# Terminal 1 — Backend
+cd backend
+# Activate virtual environment (.venv\Scripts\activate OR source .venv/bin/activate)
+uvicorn main:app --reload --port 8000
+
+# Terminal 2 — Frontend
+cd frontend
+npm run dev
+```
+
+Open **http://localhost:5173** in your browser → Log in with your admin credentials → Upload a DICOM file → Run Analysis.
+
+### 6. Optional: Ingest Clinical Guidelines for RAG
+
+To enable Retrieval-Augmented Generation (RAG) with clinical guidelines:
+1. Place your guideline PDFs in `backend/data/knowledge_base/` (e.g., LI-RADS 2024, AASLD HCC Guidance).
+2. Run the ingestion script:
+   ```bash
+   cd scripts
+   # Activate your backend virtual environment first
+   python ingest_guidelines.py
+   ```
+
+---
+
 ## 📸 Screenshots
 
 <div align="center">
@@ -70,7 +204,7 @@
 
 ### AI Pipeline Flow
 
-```
+```text
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │   DICOM      │    │  De-identify │    │  Segment     │    │  Radiomics   │    │  Vision LLM  │
 │   Upload     │───▶│  45+ PHI     │───▶│  Organ +     │───▶│  1,000+      │───▶│  MedGemma    │
@@ -127,11 +261,10 @@ Each cancer module implements a standardised `DiagnosisModule` interface with it
 - `nomic-embed-text` embeddings (768-dim vectors)
 - Top-k cosine similarity retrieval injected into the VLM prompt
 
-### Vision-Language Model — MedGemma 4B (Default)
-- Google DeepMind's medical VLM via Ollama
+### Vision-Language Model
 - Multi-modal inference: montage PNG + structured text prompt
-- Temperature 0.05, max 2,048 tokens
-- Swappable models via `.env` (see [Model Reference](#-model-reference))
+- Default models are configured per cancer type (see Model Reference).
+- Swappable models via `.env` or UI selection.
 
 ---
 
@@ -150,156 +283,38 @@ LuminaDx was designed with **privacy-by-architecture**:
 
 ---
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-| Requirement | Version | Purpose |
-|:---|:---|:---|
-| **Python** | 3.11+ | Backend runtime |
-| **Node.js** | 18+ | Frontend build |
-| **Ollama** | Latest | Local LLM server |
-| **CUDA** | 12.1+ | GPU acceleration (optional — CPU fallback available) |
-| **GPU** | 8 GB+ VRAM recommended | RTX 4070 / RTX 3080 / etc. |
-
-### 1. Clone & Setup
-
-```bash
-git clone https://github.com/Steventanardi/LuminaDX.git
-cd LuminaDX
-```
-
-### 2. Backend
-
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv .venv
-
-# Activate (Windows)
-.venv\Scripts\activate
-# Activate (Linux/macOS)
-# source .venv/bin/activate
-
-# Install PyTorch with CUDA first
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-# Install all dependencies
-pip install -r requirements.txt
-
-# Copy and configure environment
-copy .env.example .env
-# Edit .env with your preferred model settings
-```
-
-### 3. Ollama Models
-
-```bash
-# Start Ollama server
-ollama serve
-
-# Pull the default medical VLM
-ollama pull medgemma:4b-it-q8_0
-
-# Pull the embedding model for RAG
-ollama pull nomic-embed-text
-```
-
-### 4. Frontend
-
-```bash
-cd frontend
-npm install
-```
-
-### 5. Seed Admin Account
-
-```bash
-cd backend
-python -m scripts.seed_admin
-# Default: admin@luminadx.local / admin123
-```
-
-### 6. Launch
-
-**One-click (Windows):**
-```bash
-Launch.bat
-```
-
-**Manual:**
-```bash
-# Terminal 1 — Backend
-cd backend && .venv\Scripts\uvicorn main:app --reload --port 8000
-
-# Terminal 2 — Frontend
-cd frontend && npm run dev
-```
-
-Open **http://localhost:5173** → Login → Upload DICOM → Run Analysis.
-
----
-
 ## 📁 Project Structure
 
-```
+```text
 LuminaDx/
 ├── backend/
 │   ├── api/
-│   │   ├── routes/
-│   │   │   ├── analysis.py      # Start, status, report, sign-off, FHIR export
-│   │   │   ├── auth.py          # Login, register, JWT, RBAC
-│   │   │   ├── dicom.py         # Upload, preview, de-identification
-│   │   │   ├── rag.py           # Ingest guidelines, query, status
-│   │   │   └── audit.py         # Append-only event log viewer
-│   │   └── deps.py              # Auth dependencies & middleware
+│   │   ├── routes/          # API endpoints (analysis, auth, dicom, rag, audit)
+│   │   └── deps.py          # Auth dependencies & middleware
 │   ├── core/
-│   │   ├── modules/
-│   │   │   ├── base.py          # DiagnosisModule ABC (protocol)
-│   │   │   ├── liver.py         # LI-RADS v2024 + BCLC
-│   │   │   ├── lung.py          # Lung-RADS v2022
-│   │   │   ├── breast.py        # BI-RADS 5th Ed.
-│   │   │   ├── skin.py          # ABCDE + Clark Level
-│   │   │   ├── colorectal.py    # C-RADS / TNM
-│   │   │   └── registry.py      # Module registry & factory
-│   │   ├── dicom_processor.py   # Load, de-ID, convert DICOM→NIfTI
-│   │   ├── segmentation.py      # TotalSegmentator wrapper
-│   │   ├── radiomics_extractor.py # PyRadiomics feature extraction
-│   │   ├── rag_engine.py        # ChromaDB + LangChain RAG
-│   │   ├── llm_client.py        # Ollama VLM inference
-│   │   ├── slice_exporter.py    # PNG montage + overlay generation
-│   │   └── store.py             # In-memory job store
-│   ├── data/
-│   │   └── knowledge_base/      # Clinical guideline PDFs (user-supplied)
-│   ├── config.py                # Pydantic settings
-│   ├── main.py                  # FastAPI app entrypoint
-│   └── requirements.txt
+│   │   ├── modules/         # Cancer-specific logic (liver, lung, breast, etc.)
+│   │   ├── dicom_processor.py
+│   │   ├── segmentation.py
+│   │   ├── radiomics_extractor.py
+│   │   ├── rag_engine.py
+│   │   ├── llm_client.py
+│   │   ├── slice_exporter.py
+│   │   └── store.py
+│   ├── data/                # Local data (uploads, processed, DBs, logs)
+│   ├── models/              # Pydantic schemas
+│   ├── config.py            # Environment configuration
+│   └── main.py              # FastAPI app entrypoint
 ├── frontend/
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── AIReportPanel.tsx     # Structured report viewer
-│   │   │   ├── AdminDashboard.tsx    # User management (RBAC)
-│   │   │   ├── DicomViewer.tsx       # Slice viewer with overlay toggle
-│   │   │   ├── LoginScreen.tsx       # Auth gateway
-│   │   │   ├── ReportPDF.tsx         # PDF export (react-pdf)
-│   │   │   └── ...
-│   │   ├── context/AuthContext.tsx   # JWT session management
-│   │   ├── hooks/useAnalysis.ts     # Analysis polling hook
-│   │   ├── services/api.ts         # Axios HTTP client
-│   │   ├── i18n.tsx                 # EN / 繁中 bilingual support
-│   │   └── types/index.ts          # Shared TypeScript types
-│   ├── package.json
-│   └── vite.config.ts
-├── scripts/
-│   ├── seed_admin.py               # Create initial admin user
-│   ├── batch_validate.py           # Batch validation runner
-│   ├── download_dicom_datasets.py  # TCIA dataset downloader
-│   ├── ingest_guidelines.py        # CLI RAG ingestion
-│   └── setup.ps1                   # Windows setup automation
-├── docs/
-│   └── thesis/                     # Academic thesis chapters
-├── Launch.bat                      # One-click launcher (Windows)
+│   │   ├── components/      # React components (Dashboard, Viewer, PDF, etc.)
+│   │   ├── context/         # React contexts (Auth)
+│   │   ├── hooks/           # Custom hooks
+│   │   ├── services/        # API clients
+│   │   └── i18n.tsx         # EN / zh-TW translation
+│   └── package.json
+├── scripts/                 # Utility scripts (seed, validate, setup)
+├── docs/                    # Documentation and thesis materials
+├── Launch.bat               # One-click launcher (Windows)
 └── README.md
 ```
 
@@ -307,18 +322,21 @@ LuminaDx/
 
 ## 🔧 Model Reference
 
-LuminaDx supports swappable vision-language models via Ollama. Set `LLM_MODEL` in `backend/.env`:
+LuminaDx supports swappable vision-language models via Ollama. 
+
+**Default models per cancer type:**
+- **Liver:** `medgemma:4b-it-q8_0`
+- **Lung & Colorectal:** `qwen2.5vl:7b`
+- **Breast & Skin:** `minicpm-v:8b`
+
+You can override the default globally by setting `LLM_MODEL` in `backend/.env`.
 
 | Model | Env Value | VRAM | Best For |
 |:---|:---|:---:|:---|
-| **MedGemma 4B** *(default)* | `medgemma:4b-it-q8_0` | ~6 GB | Medical imaging, fast inference |
-| MedGemma 4B (lighter) | `medgemma:4b-it-q4_K_M` | ~3.5 GB | Maximum headroom on 8 GB GPUs |
-| Qwen2.5-VL 3B | `qwen2.5vl:3b` | ~3.5 GB | Structured JSON, 8 GB safe |
+| **MedGemma 4B** | `medgemma:4b-it-q8_0` | ~6 GB | Medical imaging, fast inference |
 | MiniCPM-V 8B | `minicpm-v:8b` | ~5.5 GB | Dermoscopy, mammography |
+| Qwen2.5-VL 7B | `qwen2.5vl:7b` | ~7 GB | Structured JSON, general radiology |
 | LLaVA 7B | `llava:7b` | ~4.7 GB | Widely tested in medical research |
-| Qwen2.5-VL 7B | `qwen2.5vl:7b` | ~7 GB | Charts/tables (tight on 8 GB) |
-| LLaMA 3.2 Vision 11B | `llama3.2-vision:11b` | ~9 GB | Strong general vision (12 GB+ GPU) |
-| MedGemma 27B | `medgemma:27b-it-q4_K_M` | ~16 GB | Best reasoning (16 GB+ GPU) |
 
 > 💡 **8 GB GPU users:** Use `medgemma:4b-it-q8_0` or `qwen2.5vl:3b`. Segmentation runs first and releases VRAM before the LLM loads.
 
