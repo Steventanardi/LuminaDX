@@ -1,0 +1,6 @@
+# Dev/test dependencies — install on top of requirements.txt
+# (the tests in backend/tests only need the light deps, so CI can skip
+# the heavy ML stack: pip install pytest httpx pydantic pydantic-settings
+# fastapi sqlalchemy bcrypt pyjwt)
+pytest>=8.0
+httpx>=0.27
