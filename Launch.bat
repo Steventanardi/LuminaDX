@@ -1,8 +1,8 @@
 @echo off
-title Liver Cancer AI - Launcher
+title LuminaDx - Launcher
 
 echo Starting backend...
-start "Backend (FastAPI)" /D "%~dp0backend" cmd /k ".venv\Scripts\uvicorn.exe main:app --reload --port 8000"
+start "Backend (FastAPI)" /D "%~dp0backend" cmd /k "set "PYTHONPATH=" && set "VIRTUAL_ENV=" && .venv\Scripts\python.exe -m uvicorn main:app --port 8000"
 
 echo Starting frontend...
 start "Frontend (Vite)" /D "%~dp0frontend" cmd /k "npm run dev"

@@ -1,2 +1,4 @@
-Set-Location "D:\Steven Project\Liver Cancer\backend"
-.\.venv\Scripts\uvicorn main:app --reload --port 8000
+Set-Location "$PSScriptRoot\backend"
+$env:PYTHONPATH = ""
+$env:VIRTUAL_ENV = ""
+.\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
