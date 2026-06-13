@@ -6,11 +6,11 @@ import json
 import shutil
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -20,9 +20,11 @@ from core import store
 from core.audit_log import log_analysis_complete, log_analysis_start, log_signoff
 from core.database import User
 from core.dicom_processor import convert_to_nifti, extract_study_info, load_series_map
+from core.image_preprocess import preprocess_dermoscopy, preprocess_mammography, compute_mammographic_density
 from core.llm_client import llm_client
 from core.modules import registry
-from core import model_catalog
+from core import model_catalog, feature_catalog
+from core import cnn_features, knn_classifier
 from core.rag_engine import rag_engine
 from core.radiomics_extractor import extract, summarize
 from core.segmentation import SegmentationResult, run_segmentation
@@ -43,6 +45,50 @@ def _step(job: AnalysisJob, status: AnalysisStatus, pct: int, msg: str) -> None:
     logger.info(f"[{job.job_id[:8]}] {pct:3d}%  {msg}")
 
 
+def _run_cnn_backbones(job: AnalysisJob, image_path: Path, proc_dir: Path, feat_set: set[str]) -> str:
+    """Run any selected CNN backbones on an image; return a combined summary string.
+
+    Each backbone writes an activation-heatmap overlay to proc_dir. Failures are
+    logged and skipped — they never block the diagnosis.
+    """
+    tags = feature_catalog.cnn_backbones_in(feat_set)
+    if not tags:
+        return ""
+    summaries: list[str] = []
+    for tag in tags:
+        _step(job, AnalysisStatus.EXTRACTING, 45, f"Extracting {tag.replace('cnn_', '').upper()} features …")
+        try:
+            heat = proc_dir / f"{tag}_heatmap.png"
+            cf = cnn_features.extract_cnn_features(tag, image_path, heat, device=settings.device)
+            if cf is not None:
+                summaries.append(cf.summary())
+        except Exception as exc:
+            logger.warning(f"CNN backbone {tag} failed: {exc}")
+    return "\n\n".join(summaries)
+
+
+def _run_knn(job: AnalysisJob, cancer_type: str, image_path: Path, feat_set: set[str]) -> str:
+    """Run the KNN classifier if selected; return a summary (or an unavailable note)."""
+    if "knn_classifier" not in feat_set:
+        return ""
+    backbone = feature_catalog.knn_backbone_for(feat_set)
+    _step(job, AnalysisStatus.EXTRACTING, 50, "Classifying with KNN …")
+    try:
+        res = knn_classifier.classify(cancer_type, image_path, backbone=backbone, device=settings.device)
+    except Exception as exc:
+        logger.warning(f"KNN classification failed: {exc}")
+        return ""
+    if res is not None:
+        return res.summary()
+    st = knn_classifier.status(cancer_type)
+    return (
+        "KNN classifier requested but no usable labelled reference set was found "
+        f"(have {st['n_reference']} image(s) across {len(st['classes'])} class(es) at "
+        f"{st['reference_dir']}). Add labelled images under "
+        f"data/reference/{cancer_type}/<label>/ (≥2 classes) to enable KNN predictions."
+    )
+
+
 async def _pipeline(
     job: AnalysisJob,
     study_dir: Path,
@@ -51,6 +97,9 @@ async def _pipeline(
     study_id = job.study_id
     proc_dir = settings.processed_dir / study_id
     proc_dir.mkdir(parents=True, exist_ok=True)
+    # Clear stale CNN heatmaps so /overlays reflects only the current run.
+    for old in proc_dir.glob("*_heatmap.png"):
+        old.unlink(missing_ok=True)
 
     meta_path = study_dir / "_meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {"type": "dicom"}
@@ -58,15 +107,16 @@ async def _pipeline(
     cancer_type = meta.get("cancer_type", "liver")
     module = registry.get(cancer_type)
     model_tag = job.model or model_catalog.default_for(cancer_type)
+    feat_set = set(job.features) if job.features else feature_catalog.resolve(cancer_type, None)
 
     log_analysis_start(job.job_id, study_id, model_tag)
     t0 = time.monotonic()
 
     try:
         if upload_type == "image":
-            await _run_image_pipeline(job, study_dir, meta, proc_dir, patient_info, module, model_tag)
+            await _run_image_pipeline(job, study_dir, meta, proc_dir, patient_info, module, model_tag, feat_set)
         else:
-            await _run_volumetric_pipeline(job, study_dir, meta, proc_dir, upload_type, patient_info, module, model_tag)
+            await _run_volumetric_pipeline(job, study_dir, meta, proc_dir, upload_type, patient_info, module, model_tag, feat_set)
         log_analysis_complete(job.job_id, study_id, model_tag, time.monotonic() - t0, "complete")
 
     except Exception as exc:
@@ -87,6 +137,7 @@ async def _run_image_pipeline(
     patient_info: Optional[dict],
     module,
     model_tag: str,
+    feat_set: set[str],
 ) -> None:
     study_id = job.study_id
     t = {}
@@ -105,11 +156,71 @@ async def _run_image_pipeline(
     slices_b64: list[str] = []
     for img_path in image_files[:24]:
         slices_b64.append(base64.b64encode(img_path.read_bytes()).decode())
-    store.save_slices(job.job_id, slices_b64, slices_b64)
+    # raw_b64 keeps the originals; slices_b64 may get its first frame swapped for
+    # the enhanced image so the split view shows enhanced (top) vs original (bottom).
+    raw_b64 = list(slices_b64)
+    store.save_slices(job.job_id, slices_b64, raw_b64)
 
     modality = meta.get("modality", "CT")
     seg = SegmentationResult()
     montage = image_files[0]
+    radiomics_summary = ""
+
+    # Skin: dermoscopy enhancement (colour constancy → hair removal → CLAHE)
+    # plus quantitative ABCD features — each step user-selectable.
+    if module.cancer_type == "skin" and (
+        feat_set & {"color_constancy", "hair_removal", "clahe", "dermoscopy_abcd"}
+    ):
+        _step(job, AnalysisStatus.PROCESSING, 35, "Enhancing dermoscopy image …")
+        enhanced_path = proc_dir / "skin_enhanced.png"
+        try:
+            feats = preprocess_dermoscopy(
+                montage, enhanced_path,
+                color_constancy="color_constancy" in feat_set,
+                hair_removal="hair_removal" in feat_set,
+                clahe="clahe" in feat_set,
+                compute_abcd="dermoscopy_abcd" in feat_set,
+            )
+            if enhanced_path.exists():
+                montage = enhanced_path
+                slices_b64[0] = base64.b64encode(enhanced_path.read_bytes()).decode()
+                store.save_slices(job.job_id, slices_b64, raw_b64)
+            if feats is not None:
+                radiomics_summary = feats.summary()
+        except Exception as exc:  # never let preprocessing block diagnosis
+            logger.warning(f"Dermoscopy preprocessing failed, using raw image: {exc}")
+
+    # Breast: CLAHE enhancement + mammographic density (computed on the original).
+    elif module.cancer_type == "breast" and (feat_set & {"clahe", "breast_density"}):
+        if "clahe" in feat_set:
+            _step(job, AnalysisStatus.PROCESSING, 35, "Enhancing mammography image (CLAHE) …")
+            enhanced_path = proc_dir / "breast_enhanced.png"
+            try:
+                if preprocess_mammography(montage, enhanced_path) and enhanced_path.exists():
+                    montage = enhanced_path
+                    slices_b64[0] = base64.b64encode(enhanced_path.read_bytes()).decode()
+                    store.save_slices(job.job_id, slices_b64, raw_b64)
+            except Exception as exc:  # never let preprocessing block diagnosis
+                logger.warning(f"Mammography preprocessing failed, using raw image: {exc}")
+        # Density uses the ORIGINAL image (image_files[0]), unaffected by CLAHE above.
+        if "breast_density" in feat_set:
+            _step(job, AnalysisStatus.EXTRACTING, 45, "Estimating mammographic density …")
+            try:
+                mf = compute_mammographic_density(image_files[0])
+                if mf is not None:
+                    radiomics_summary = mf.summary()
+            except Exception as exc:
+                logger.warning(f"Mammographic density failed: {exc}")
+
+    # CNN backbone deep features (VGG16/19, ResNet50) — run on the (enhanced) image.
+    cnn_summary = _run_cnn_backbones(job, montage, proc_dir, feat_set)
+    if cnn_summary:
+        radiomics_summary = (radiomics_summary + "\n\n" + cnn_summary).strip()
+
+    # KNN classifier over CNN embeddings (needs a labelled reference set).
+    knn_summary = _run_knn(job, module.cancer_type, montage, feat_set)
+    if knn_summary:
+        radiomics_summary = (radiomics_summary + "\n\n" + knn_summary).strip()
 
     _step(job, AnalysisStatus.ANALYZING, 60, "Retrieving guidelines (RAG) …")
     t0 = time.monotonic()
@@ -123,7 +234,7 @@ async def _run_image_pipeline(
         seg=seg,
         modality=modality,
         rag_context=rag_ctx,
-        radiomics_summary="",
+        radiomics_summary=radiomics_summary,
         patient_info=patient_info,
         module=module,
         model=model_tag,
@@ -132,11 +243,13 @@ async def _run_image_pipeline(
     report.study_id = study_id
     report.cancer_type = module.cancer_type
     report.model = model_tag
+    if radiomics_summary:
+        report.radiomics_summary = radiomics_summary
 
     job.status = AnalysisStatus.COMPLETE
     job.progress = 100
     job.current_step = "Analysis complete"
-    job.completed_at = datetime.utcnow()
+    job.completed_at = datetime.now(timezone.utc)
     job.report = report
     job.timings = t
     store.save_job(job)
@@ -152,6 +265,7 @@ async def _run_volumetric_pipeline(
     patient_info: Optional[dict],
     module,
     model_tag: str,
+    feat_set: set[str],
 ) -> None:
     study_id = job.study_id
     t: dict[str, float] = {}
@@ -214,18 +328,30 @@ async def _run_volumetric_pipeline(
     _step(job, AnalysisStatus.PROCESSING, 60, "Building diagnostic montage …")
     montage = create_montage(nifti_paths, seg, proc_dir, modality, phase_labels)
 
-    _step(job, AnalysisStatus.EXTRACTING, 68, "Extracting radiomic features …")
-    tumor_mask_path: Optional[Path] = None
-    if seg_spec:
-        for candidate in seg_spec.tumor_mask_names:
-            p = seg_dir / "tumor" / candidate
-            if p.exists():
-                tumor_mask_path = p
-                break
-    t0 = time.monotonic()
-    features = extract(primary, tumor_mask_path, modality)
-    t["radiomics_s"] = round(time.monotonic() - t0, 2)
-    rad_summary = summarize(features)
+    rad_summary = ""
+    if "radiomics" in feat_set:
+        _step(job, AnalysisStatus.EXTRACTING, 68, "Extracting radiomic features …")
+        tumor_mask_path: Optional[Path] = None
+        if seg_spec:
+            for candidate in seg_spec.tumor_mask_names:
+                p = seg_dir / "tumor" / candidate
+                if p.exists():
+                    tumor_mask_path = p
+                    break
+        t0 = time.monotonic()
+        features = extract(primary, tumor_mask_path, modality)
+        t["radiomics_s"] = round(time.monotonic() - t0, 2)
+        rad_summary = summarize(features)
+
+    # CNN backbone deep features (VGG16/19, ResNet50) — run on the montage image.
+    cnn_summary = _run_cnn_backbones(job, montage, proc_dir, feat_set)
+    if cnn_summary:
+        rad_summary = (rad_summary + "\n\n" + cnn_summary).strip()
+
+    # KNN classifier over CNN embeddings (needs a labelled reference set).
+    knn_summary = _run_knn(job, module.cancer_type, montage, feat_set)
+    if knn_summary:
+        rad_summary = (rad_summary + "\n\n" + knn_summary).strip()
 
     _step(job, AnalysisStatus.ANALYZING, 76, "Retrieving guidelines (RAG) …")
     t0 = time.monotonic()
@@ -248,11 +374,13 @@ async def _run_volumetric_pipeline(
     report.study_id = study_id
     report.cancer_type = module.cancer_type
     report.model = model_tag
+    if rad_summary:
+        report.radiomics_summary = rad_summary
 
     job.status = AnalysisStatus.COMPLETE
     job.progress = 100
     job.current_step = "Analysis complete"
-    job.completed_at = datetime.utcnow()
+    job.completed_at = datetime.now(timezone.utc)
     job.report = report
     job.timings = t
     store.save_job(job)
@@ -281,12 +409,39 @@ async def list_models(current_user: User = Depends(get_current_user)):
     return model_catalog.catalog()
 
 
+@router.get("/features")
+async def list_features(current_user: User = Depends(get_current_user)):
+    """Per-cancer feature/extractor catalog (defaults + options) for the feature picker."""
+    return feature_catalog.catalog()
+
+
+@router.get("/knn/status/{cancer_type}")
+async def knn_status(cancer_type: str, current_user: User = Depends(get_current_user)):
+    """Labelled-reference-set status for the KNN classifier."""
+    return knn_classifier.status(cancer_type)
+
+
+@router.post("/knn/build/{cancer_type}")
+async def knn_build(
+    cancer_type: str,
+    backbone: str = "cnn_resnet50",
+    current_user: User = Depends(get_current_user),
+):
+    """(Re)build the KNN reference index for a cancer from its labelled images."""
+    if not cnn_features.is_backbone(backbone):
+        raise HTTPException(400, f"Unknown backbone: {backbone}")
+    n = knn_classifier.build_index(cancer_type, backbone, device=settings.device)
+    return {"cancer": cancer_type, "backbone": backbone, "indexed": n,
+            "status": knn_classifier.status(cancer_type)}
+
+
 @router.post("/start/{study_id}", response_model=AnalysisJob)
 async def start_analysis(
     study_id: str,
     background_tasks: BackgroundTasks,
     patient_context: Optional[PatientContext] = None,
     model: Optional[str] = None,
+    features: Optional[List[str]] = Query(None),
     current_user: User = Depends(get_current_user),
 ):
     study_dir = settings.uploads_dir / study_id
@@ -296,13 +451,21 @@ async def start_analysis(
     meta_path = study_dir / "_meta.json"
     meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
     cancer_type = meta.get("cancer_type", "liver")
+    # For a comparison feature, silently running a different model than the one
+    # requested would be misleading — reject unknown tags outright.
+    if model and not model_catalog.is_allowed(model):
+        raise HTTPException(400, f"Unknown model: {model}")
     model_tag = model_catalog.resolve(cancer_type, model)
+    # Resolve selected features against what's applicable for this cancer
+    # (unknown/inapplicable keys are dropped; None → cancer defaults).
+    feature_set = sorted(feature_catalog.resolve(cancer_type, features))
 
     job = AnalysisJob(
         job_id=str(uuid.uuid4()),
         study_id=study_id,
         cancer_type=cancer_type,
         model=model_tag,
+        features=feature_set,
         owner_user_id=current_user.id,
         owner_department=current_user.department,
     )
@@ -338,6 +501,24 @@ async def get_slices(job_id: str, current_user: User = Depends(get_current_user)
     _get_owned_job(job_id, current_user)
     slices, raw = store.load_slices(job_id)
     return {"slices": slices, "raw_slices": raw, "count": len(slices)}
+
+
+@router.get("/overlays/{job_id}")
+async def get_overlays(job_id: str, current_user: User = Depends(get_current_user)):
+    """CNN activation-heatmap overlays (Grad-CAM-style) saved during analysis."""
+    job = _get_owned_job(job_id, current_user)
+    proc_dir = settings.processed_dir / job.study_id
+    overlays = []
+    if proc_dir.exists():
+        for f in sorted(proc_dir.glob("*_heatmap.png")):
+            tag = f.stem.replace("_heatmap", "")
+            label = f"{tag.replace('cnn_', '').upper()} attention"
+            overlays.append({
+                "key": tag,
+                "label": label,
+                "image": base64.b64encode(f.read_bytes()).decode(),
+            })
+    return {"overlays": overlays}
 
 
 @router.post("/signoff/{job_id}", response_model=AnalysisJob)

@@ -1,16 +1,17 @@
 """Doctor authentication and admin user management."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from config import settings
 from core.auth_utils import create_access_token, hash_password, verify_password, decode_token
 from core.database import User, get_db
+from core.rate_limit import limiter
 
 router = APIRouter()
 
@@ -69,7 +70,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.cookie_secure,
         max_age=60 * 60 * settings.auth_token_expire_hours,
         path="/",
     )
@@ -96,7 +97,8 @@ def _require_admin_caller(access_token: Optional[str], db: Session) -> User:
 # ── Auth endpoints ─────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=UserOut)
-async def login(req: LoginRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def login(request: Request, req: LoginRequest, response: Response, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == req.email, User.is_active == True).first()
     if not user or not verify_password(req.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -104,7 +106,7 @@ async def login(req: LoginRequest, response: Response, db: Session = Depends(get
     token = create_access_token(user.id, user.role)
     _set_auth_cookie(response, token)
 
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     db.commit()
     return UserOut.model_validate(user)
 

@@ -37,11 +37,10 @@ async def query(req: RagQueryRequest, current_user: User = Depends(get_current_u
 
 @router.get("/status")
 async def status():
-    total_pdfs = sum(
-        len(list(settings.knowledge_base_dir.glob("**/*.pdf"))), 0
-    ) if False else len(list(settings.knowledge_base_dir.glob("*.pdf"))) + sum(
-        len(list(d.glob("*.pdf")))
-        for d in settings.knowledge_base_dir.iterdir() if d.is_dir()
+    # Count PDFs in the root (liver) plus each cancer-specific subfolder.
+    kb = settings.knowledge_base_dir
+    total_pdfs = len(list(kb.glob("*.pdf"))) + sum(
+        len(list(d.glob("*.pdf"))) for d in kb.iterdir() if d.is_dir()
     )
     return {
         "ready": rag_engine.ready,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -56,7 +56,7 @@ class SeriesInfo(BaseModel):
 
 class DicomStudy(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    upload_time: datetime = Field(default_factory=datetime.utcnow)
+    upload_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     modality: Optional[Modality] = None
     study_description: Optional[str] = None
     num_files: int = 0
@@ -90,7 +90,7 @@ class LesionFinding(BaseModel):
 
 class DiagnosticReport(BaseModel):
     study_id: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     modality: str
     cancer_type: str = "liver"
     model: Optional[str] = None   # LLM tag that produced this report (for comparison)
@@ -116,7 +116,7 @@ class SignOff(BaseModel):
     radiologist_name: str
     decision: SignOffDecision
     comments: Optional[str] = None
-    signed_at: datetime = Field(default_factory=datetime.utcnow)
+    signed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class SignOffRequest(BaseModel):
@@ -130,12 +130,13 @@ class AnalysisJob(BaseModel):
     study_id: str
     cancer_type: str = "liver"
     model: Optional[str] = None   # LLM tag chosen for this run
+    features: List[str] = Field(default_factory=list)  # selected feature/extractor keys
     owner_user_id: Optional[str] = None
     owner_department: Optional[str] = None
     status: AnalysisStatus = AnalysisStatus.PENDING
     progress: int = 0
     current_step: str = "Queued"
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
     report: Optional[DiagnosticReport] = None
