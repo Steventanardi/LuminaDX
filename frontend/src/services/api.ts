@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AnalysisJob, DiagnosticReport, DicomStudy, ModelCatalog, PatientContext, UploadResponse, User } from '../types'
+import type { AnalysisJob, DiagnosticReport, DicomStudy, FeatureCatalog, ModelCatalog, PatientContext, UploadResponse, User } from '../types'
 
 const http = axios.create({
   baseURL: '/api',
@@ -55,16 +55,23 @@ export const dicomApi = {
 // ── Analysis ──────────────────────────────────────────────────────────────────
 
 export const analysisApi = {
-  start: (studyId: string, ctx?: PatientContext, model?: string): Promise<AnalysisJob> =>
-    http.post<AnalysisJob>(`/analysis/start/${studyId}`, ctx, { params: model ? { model } : undefined }).then(r => r.data),
+  start: (studyId: string, ctx?: PatientContext, model?: string, features?: string[]): Promise<AnalysisJob> =>
+    http.post<AnalysisJob>(`/analysis/start/${studyId}`, ctx, {
+      params: { ...(model ? { model } : {}), ...(features && features.length ? { features } : {}) },
+      paramsSerializer: { indexes: null },  // features=a&features=b (repeat key, no [])
+    }).then(r => r.data),
   models: (): Promise<ModelCatalog> =>
     http.get<ModelCatalog>('/analysis/models').then(r => r.data),
+  features: (): Promise<FeatureCatalog> =>
+    http.get<FeatureCatalog>('/analysis/features').then(r => r.data),
   status: (jobId: string): Promise<AnalysisJob> =>
     http.get<AnalysisJob>(`/analysis/status/${jobId}`).then(r => r.data),
   report: (jobId: string): Promise<DiagnosticReport> =>
     http.get<DiagnosticReport>(`/analysis/report/${jobId}`).then(r => r.data),
   slices: (jobId: string): Promise<{ slices: string[]; raw_slices: string[]; count: number }> =>
     http.get(`/analysis/slices/${jobId}`).then(r => r.data),
+  overlays: (jobId: string): Promise<{ overlays: { key: string; label: string; image: string }[] }> =>
+    http.get(`/analysis/overlays/${jobId}`).then(r => r.data),
   signOff: (jobId: string, data: { radiologist_name: string; decision: string; comments?: string }): Promise<AnalysisJob> =>
     http.post(`/analysis/signoff/${jobId}`, data).then(r => r.data),
   fhirUrl: (jobId: string): string => `/api/analysis/fhir/${jobId}`,

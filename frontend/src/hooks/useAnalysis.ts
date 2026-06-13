@@ -14,10 +14,10 @@ export function useAnalysis() {
     if (pollRef.current !== null) { window.clearInterval(pollRef.current); pollRef.current = null }
   }
 
-  const start = useCallback(async (studyId: string, ctx?: PatientContext, model?: string) => {
+  const start = useCallback(async (studyId: string, ctx?: PatientContext, model?: string, features?: string[]) => {
     setJob(null); setSlices([]); setRawSlices([]); setReport(null)
     stopPolling()
-    const newJob = await analysisApi.start(studyId, ctx, model)
+    const newJob = await analysisApi.start(studyId, ctx, model, features)
     setJob(newJob)
 
     let finished = false

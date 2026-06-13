@@ -3,17 +3,28 @@ import { useI18n } from '../i18n'
 import type { TKey } from '../i18n'
 import type { AnalysisJob } from '../types'
 
-const _STEPS: { key: string; label: TKey }[] = [
-  { key: 'processing', label: 'pt.dicom' },
+// Image-based cancers run the image pipeline (no DICOM, no segmentation/radiomics).
+const IMAGE_CANCERS = new Set(['skin', 'breast'])
+
+const VOLUMETRIC_STEPS: { key: string; label: TKey }[] = [
+  { key: 'processing', label: 'pt.prepare' },
   { key: 'segmenting', label: 'pt.segment' },
   { key: 'extracting', label: 'pt.radiomics' },
   { key: 'analyzing',  label: 'pt.llmrag' },
   { key: 'complete',   label: 'pt.done' },
 ]
 
+const IMAGE_STEPS: { key: string; label: TKey }[] = [
+  { key: 'processing', label: 'pt.prepare' },
+  { key: 'extracting', label: 'pt.features' },
+  { key: 'analyzing',  label: 'pt.airag' },
+  { key: 'complete',   label: 'pt.done' },
+]
+
 export default function ProgressTracker({ job, isDark = false }: { job: AnalysisJob; isDark?: boolean }) {
   const { t } = useI18n()
   const pct = job.progress
+  const steps = IMAGE_CANCERS.has(job.cancer_type) ? IMAGE_STEPS : VOLUMETRIC_STEPS
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -24,9 +35,9 @@ export default function ProgressTracker({ job, isDark = false }: { job: Analysis
         <div className={clsx('h-full rounded-full transition-all duration-700', job.status === 'failed' ? 'bg-red-500' : 'bg-accent')} style={{ width: `${pct}%` }} />
       </div>
       <div className="flex gap-1">
-        {_STEPS.map(step => {
-          const idx    = _STEPS.findIndex(s => s.key === step.key)
-          const curIdx = _STEPS.findIndex(s => s.key === job.status) ?? -1
+        {steps.map(step => {
+          const idx    = steps.findIndex(s => s.key === step.key)
+          const curIdx = steps.findIndex(s => s.key === job.status) ?? -1
           const done   = curIdx >= idx
           return (
             <div key={step.key} className="flex-1 text-center">

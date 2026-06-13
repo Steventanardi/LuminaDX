@@ -9,12 +9,13 @@ import LoginScreen from './components/LoginScreen'
 import ProgressTracker from './components/ProgressTracker'
 import Toast from './components/Toast'
 import UploadPanel from './components/UploadPanel'
+import WorkflowPanel from './components/WorkflowPanel'
 import { useAuth } from './context/AuthContext'
 import { useAnalysis } from './hooks/useAnalysis'
 import { analysisApi, dicomApi, ragApi } from './services/api'
 import { useI18n } from './i18n'
 import type { TKey } from './i18n'
-import type { CancerType, ModelCatalog, PatientContext, UploadResponse } from './types'
+import type { CancerType, FeatureCatalog, ModelCatalog, PatientContext, UploadResponse } from './types'
 import { CANCER_TYPE_META } from './types'
 
 const DEFAULT_CTX: PatientContext = {
@@ -31,16 +32,6 @@ const APP_SHORTCUTS: [string, TKey][] = [
   ['Esc', 'sc.esc'],
 ]
 
-function StepBadge({ n, done, active }: { n: number; done: boolean; active: boolean }) {
-  return (
-    <div className={clsx(
-      'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-all duration-300',
-      done ? 'bg-emerald-500 text-white' : active ? 'bg-accent text-white ring-2 ring-accent/25' : 'bg-slate-200/90 dark:bg-slate-700 text-slate-400 dark:text-slate-500',
-    )}>
-      {done ? '✓' : n}
-    </div>
-  )
-}
 
 export default function App() {
   const { t, lang, toggle: toggleLang } = useI18n()
@@ -50,6 +41,8 @@ export default function App() {
   const [cancerType, setCancerType]       = useState<CancerType>('liver')
   const [modelCatalog, setModelCatalog]   = useState<ModelCatalog | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [featureCatalog, setFeatureCatalog] = useState<FeatureCatalog | null>(null)
+  const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [ctx, setCtx]                     = useState<PatientContext>(DEFAULT_CTX)
   const [previewSlices, setPreviewSlices] = useState<string[]>([])
   const [ragStatus, setRagStatus]         = useState<{ chunks: number; pdf_count: number } | null>(null)
@@ -63,7 +56,7 @@ export default function App() {
   const [leftOpen, setLeftOpen]           = useState(true)
   const [rightOpen, setRightOpen]         = useState(true)
   const [leftWidth, setLeftWidth]         = useState(288)
-  const [rightWidth, setRightWidth]       = useState(400)
+  const [rightWidth, setRightWidth]       = useState(() => Number(localStorage.getItem('v2-right-width')) || 480)
   const [isResizing, setIsResizing]       = useState(false)
   const [isDark, setIsDark]               = useState(() => localStorage.getItem('v2-theme') !== 'light')
   const [toast, setToast]                 = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null)
@@ -80,13 +73,20 @@ export default function App() {
 
   useEffect(() => { ragApi.status().then(setRagStatus).catch(() => null) }, [])
   useEffect(() => { analysisApi.models().then(setModelCatalog).catch(() => null) }, [])
+  useEffect(() => { analysisApi.features().then(setFeatureCatalog).catch(() => null) }, [])
   useEffect(() => { localStorage.setItem('v2-theme', isDark ? 'dark' : 'light') }, [isDark])
+  useEffect(() => { localStorage.setItem('v2-right-width', String(rightWidth)) }, [rightWidth])
 
   // Default the model to the current cancer's recommended model whenever the
   // cancer type changes (or once the catalog loads).
   useEffect(() => {
     if (modelCatalog?.[cancerType]) setSelectedModel(modelCatalog[cancerType].default)
   }, [cancerType, modelCatalog])
+
+  // Default the selected features to the current cancer's defaults.
+  useEffect(() => {
+    if (featureCatalog?.[cancerType]) setSelectedFeatures(featureCatalog[cancerType].defaults)
+  }, [cancerType, featureCatalog])
 
   // Toast on analysis complete
   useEffect(() => {
@@ -131,7 +131,7 @@ export default function App() {
       dicomApi.updateCancerType(upload.study_id, ct).catch(() => null)
     }
   }, [upload])
-  const handleAnalyse   = useCallback(async () => { if (upload) await start(upload.study_id, ctx, selectedModel ?? undefined) }, [upload, ctx, selectedModel, start])
+  const handleAnalyse   = useCallback(async () => { if (upload) await start(upload.study_id, ctx, selectedModel ?? undefined, selectedFeatures) }, [upload, ctx, selectedModel, selectedFeatures, start])
   const handleReset     = () => { setUpload(null); setCtx(DEFAULT_CTX); setPreviewSlices([]); setShowRaw(false); setDetection(null); reset() }
   const handleLogout    = async () => { await logout() }
   const handleIngestRag = async () => {
@@ -171,7 +171,7 @@ export default function App() {
     e.preventDefault()
     const startX = e.clientX; const startW = rightWidth
     setIsResizing(true)
-    const onMove = (ev: MouseEvent) => setRightWidth(Math.max(280, Math.min(560, startW + startX - ev.clientX)))
+    const onMove = (ev: MouseEvent) => setRightWidth(Math.max(320, Math.min(820, startW + startX - ev.clientX)))
     const onUp = () => { setIsResizing(false); document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
@@ -181,11 +181,7 @@ export default function App() {
     ? 'bg-slate-900/80 border-white/[0.07] shadow-black/50'
     : 'bg-white/65 border-white/80 shadow-violet-100/40')
 
-  const INPUT = clsx('w-full rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-accent/50 transition-colors font-mono border', isDark
-    ? 'bg-white/5 border-white/[0.08] text-slate-200 placeholder:text-slate-600'
-    : 'bg-white/70 border-black/[0.07] text-slate-800 placeholder:text-slate-400')
-
-  const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-center transition-colors shadow-sm', isDark
+const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-center transition-colors shadow-sm', isDark
     ? 'bg-white/5 hover:bg-white/10 border-white/[0.08] text-slate-400 hover:text-accent'
     : 'bg-white/60 hover:bg-white/90 border-white/80 text-slate-500 hover:text-accent')
 
@@ -403,255 +399,31 @@ export default function App() {
           </div>
 
           {leftOpen && (
-            <div className="flex-1 p-4 space-y-5 overflow-y-auto">
-
-              {/* Cancer type selector */}
-              {!uploaded && (
-                <div className="space-y-2.5">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">Cancer Type</span>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {(Object.keys(CANCER_TYPE_META) as CancerType[]).map(ct => {
-                      const m = CANCER_TYPE_META[ct]
-                      return (
-                        <button
-                          key={ct}
-                          onClick={() => handleCancerTypeChange(ct)}
-                          className={clsx(
-                            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium transition-all border',
-                            cancerType === ct
-                              ? 'bg-accent text-white border-accent/50 shadow-sm shadow-accent/25'
-                              : isDark
-                                ? 'bg-white/5 text-slate-400 border-white/[0.08] hover:border-accent/40 hover:text-slate-200'
-                                : 'bg-white/60 text-slate-500 border-black/[0.07] hover:border-accent/30 hover:text-slate-700',
-                          )}
-                        >
-                          <span>{m.icon}</span>
-                          <span>{m.label}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <p className={clsx('text-[10px]', isDark ? 'text-slate-600' : 'text-slate-400')}>
-                    {CANCER_TYPE_META[cancerType]?.scoreSystem} scoring
-                  </p>
-                </div>
-              )}
-
-              {/* Step 1 */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <StepBadge n={1} done={uploaded} active={!uploaded} />
-                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('step.upload')}</span>
-                </div>
-                <div className="pl-8">
-                  {!uploaded ? (
-                    <UploadPanel onUploaded={handleUploaded} cancerType={cancerType} isDark={isDark} />
-                  ) : (
-                    <div className="space-y-2">
-                      <div className={clsx('rounded-xl p-3 space-y-2 border', isDark ? 'border-emerald-800/30 bg-emerald-950/20' : 'border-emerald-200/80 bg-emerald-50/70')}>
-                        <div className="flex items-center justify-between">
-                          <span className={clsx('text-xs font-semibold', isDark ? 'text-emerald-400' : 'text-emerald-700')}>{t('step.studyLoaded')}</span>
-                          <button onClick={handleReset} className="text-[10px] text-slate-400 hover:text-slate-500 transition-colors underline underline-offset-2">{t('step.reset')}</button>
-                        </div>
-                        <div className="text-[10px] font-mono space-y-1">
-                          {[[t('field.modality'), upload?.modality ?? '—'], [t('field.files'), upload?.num_files], [t('field.series'), upload?.series.length]].map(([k, v]) => (
-                            <div key={String(k)} className="flex justify-between">
-                              <span className="text-slate-400">{k}</span>
-                              <span className={isDark ? 'text-slate-200' : 'text-slate-700'}>{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Auto-detection badge */}
-                      {detection && (
-                        <div className={clsx('rounded-xl p-3 border space-y-1.5',
-                          detection.confidence === 'high'
-                            ? isDark ? 'bg-sky-950/40 border-sky-700/40' : 'bg-sky-50 border-sky-200'
-                            : isDark ? 'bg-slate-800/40 border-white/[0.08]' : 'bg-white/50 border-black/[0.07]')}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <svg className={clsx('w-3 h-3 shrink-0',
-                                detection.confidence === 'high'
-                                  ? isDark ? 'text-sky-400' : 'text-sky-600'
-                                  : 'text-slate-400')}
-                                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round"
-                                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                              </svg>
-                              <span className={clsx('text-[10px] font-semibold uppercase tracking-wide',
-                                detection.confidence === 'high'
-                                  ? isDark ? 'text-sky-400' : 'text-sky-700'
-                                  : isDark ? 'text-slate-400' : 'text-slate-500')}>
-                                Auto-detected: {CANCER_TYPE_META[detection.type as CancerType]?.icon} {CANCER_TYPE_META[detection.type as CancerType]?.label}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className={clsx('text-[9px] font-bold uppercase px-1.5 py-0.5 rounded',
-                                detection.confidence === 'high'
-                                  ? 'bg-sky-500 text-white'
-                                  : 'bg-slate-500 text-white')}>
-                                {detection.confidence}
-                              </span>
-                              <button onClick={() => setDetection(null)}
-                                className="text-slate-400 hover:text-slate-600 text-xs leading-none">×</button>
-                            </div>
-                          </div>
-                          {detection.reason && (
-                            <p className={clsx('text-[9px] font-mono leading-relaxed truncate',
-                              isDark ? 'text-slate-500' : 'text-slate-400')}
-                              title={detection.reason}>
-                              {detection.reason}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Post-upload cancer type override */}
-                      <div className="space-y-1.5">
-                        <span className={clsx('text-[10px] font-semibold uppercase tracking-widest', isDark ? 'text-slate-500' : 'text-slate-400')}>Cancer Type</span>
-                        <div className="grid grid-cols-2 gap-1">
-                          {(Object.keys(CANCER_TYPE_META) as CancerType[]).map(ct => {
-                            const m = CANCER_TYPE_META[ct]
-                            return (
-                              <button
-                                key={ct}
-                                onClick={() => handleCancerTypeChange(ct)}
-                                disabled={isRunning}
-                                className={clsx(
-                                  'flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all border disabled:opacity-40 disabled:cursor-not-allowed',
-                                  cancerType === ct
-                                    ? 'bg-accent text-white border-accent/50 shadow-sm shadow-accent/25'
-                                    : isDark
-                                      ? 'bg-white/5 text-slate-400 border-white/[0.08] hover:border-accent/40 hover:text-slate-200'
-                                      : 'bg-white/60 text-slate-500 border-black/[0.07] hover:border-accent/30 hover:text-slate-700',
-                                )}
-                              >
-                                <span>{m.icon}</span>
-                                <span>{m.label}</span>
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Step 2 */}
-              <div className={clsx('space-y-3 transition-opacity duration-300', !uploaded && 'opacity-30 pointer-events-none')}>
-                <div className="flex items-center gap-2.5">
-                  <StepBadge n={2} done={hasCtx} active={uploaded && !hasCtx} />
-                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('step.context')}</span>
-                  <span className="text-[10px] text-slate-400 ml-auto">{t('step.optional')}</span>
-                </div>
-                {uploaded && (
-                  <div className="pl-8 space-y-2.5">
-                    {/* Liver-specific context chips */}
-                    {cancerType === 'liver' && (<>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(['cirrhosis', 'hepatitis_b', 'hepatitis_c', 'prior_hcc'] as const).map(key => {
-                          const labelKey = { cirrhosis: 'ctx.cirrhosis', hepatitis_b: 'ctx.hepatitis_b', hepatitis_c: 'ctx.hepatitis_c', prior_hcc: 'ctx.prior_hcc' } as const
-                          return (
-                            <button key={key} onClick={() => setCtx(p => ({ ...p, [key]: !p[key] }))}
-                              className={clsx('px-2.5 py-1 rounded-full text-xs font-medium transition-all',
-                                ctx[key] ? 'bg-accent text-white shadow-sm shadow-accent/25'
-                                  : isDark ? 'bg-white/5 text-slate-500 border border-white/[0.08] hover:border-accent/40 hover:text-slate-300'
-                                  : 'bg-white/60 text-slate-500 border border-black/[0.08] hover:border-accent/30 hover:text-slate-700')}>
-                              {t(labelKey[key])}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-400 shrink-0">{t('ctx.afp')}</span>
-                        <div className="relative flex-1">
-                          <input type="number" value={ctx.afp_level ?? ''}
-                            onChange={e => setCtx(p => ({ ...p, afp_level: e.target.value ? Number(e.target.value) : null }))}
-                            placeholder="—" className={clsx(INPUT, 'pl-2.5 pr-10')} />
-                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[9px] text-slate-400 pointer-events-none">{t('ctx.afpUnit')}</span>
-                        </div>
-                      </div>
-                    </>)}
-                    <textarea value={ctx.notes} onChange={e => setCtx(p => ({ ...p, notes: e.target.value }))}
-                      rows={2} placeholder={t('ctx.notes')}
-                      className={clsx(INPUT.replace('font-mono', 'resize-none'), 'px-2.5 py-1.5')} />
-                  </div>
-                )}
-              </div>
-
-              {/* Step 3 */}
-              <div className={clsx('space-y-3 transition-opacity duration-300', !uploaded && 'opacity-30 pointer-events-none')}>
-                <div className="flex items-center gap-2.5">
-                  <StepBadge n={3} done={isDone} active={uploaded && !isDone} />
-                  <span className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('step.run')}</span>
-                </div>
-                {uploaded && (
-                  <div className="pl-8 space-y-2.5">
-                    {/* Model picker — lets you compare LLMs per cancer */}
-                    {modelCatalog?.[cancerType] && (
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">AI Model</span>
-                          {selectedModel === modelCatalog[cancerType].default && (
-                            <span className="text-[9px] text-slate-500">recommended</span>
-                          )}
-                        </div>
-                        <select
-                          value={selectedModel ?? modelCatalog[cancerType].default}
-                          onChange={e => setSelectedModel(e.target.value)}
-                          disabled={isRunning}
-                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
-                          className={clsx('w-full rounded-lg px-2.5 py-2 text-xs font-mono border focus:outline-none focus:border-accent/50 transition-colors disabled:opacity-50',
-                            isDark ? 'bg-slate-800 border-white/[0.12] text-slate-100' : 'bg-white border-black/[0.12] text-slate-800')}
-                        >
-                          {modelCatalog[cancerType].options.map(m => (
-                            <option key={m.tag} value={m.tag}
-                              style={{ backgroundColor: isDark ? '#1e293b' : '#ffffff', color: isDark ? '#f1f5f9' : '#1e293b' }}>
-                              {m.label}{m.tag === modelCatalog[cancerType].default ? '  ★' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                    <button onClick={handleAnalyse} disabled={isRunning}
-                      className={clsx('w-full py-2.5 rounded-xl font-semibold text-sm transition-all duration-200',
-                        isRunning ? 'bg-accent/15 text-accent/60 cursor-not-allowed'
-                          : isDone
-                            ? isDark ? 'bg-white/5 border border-white/[0.08] text-slate-400 hover:border-accent/40 hover:text-accent' : 'bg-white/60 border border-black/[0.08] text-slate-500 hover:border-accent/30 hover:text-accent'
-                            : 'bg-accent hover:bg-violet-600 active:bg-violet-700 text-white shadow-lg shadow-violet-300/30')}>
-                      {isRunning ? t('run.analysing') : isDone ? t('run.again') : t('run.start')}
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Progress */}
-              {job && (
-                <div className={clsx('pt-4 space-y-2 border-t', isDark ? 'border-white/[0.05]' : 'border-black/[0.05]')}>
-                  <ProgressTracker job={job} isDark={isDark} />
-                  {job.status === 'failed' && job.error && (
-                    <div className={clsx('rounded-xl p-3 space-y-1 border', isDark ? 'bg-red-950/30 border-red-900/30' : 'bg-red-50/80 border-red-200/70')}>
-                      <p className={clsx('text-xs font-semibold', isDark ? 'text-red-400' : 'text-red-600')}>{t('run.failed')}</p>
-                      <p className={clsx('text-[10px] font-mono leading-relaxed break-words', isDark ? 'text-red-400/70' : 'text-red-500')}>{job.error}</p>
-                      <button onClick={handleReset} className={clsx('text-[10px] underline underline-offset-2 transition-colors', isDark ? 'text-red-400 hover:text-red-300' : 'text-red-500 hover:text-red-700')}>{t('step.reset')}</button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {ragStatus && ragStatus.chunks === 0 && (
-                <div className={clsx('rounded-xl p-3 text-xs space-y-1 border', isDark ? 'bg-amber-950/30 border-amber-900/30' : 'bg-amber-50/80 border-amber-200/60')}>
-                  <p className={clsx('font-semibold', isDark ? 'text-amber-400/90' : 'text-amber-700')}>{t('rag.noneTitle')}</p>
-                  <p className={clsx('leading-relaxed text-[10px]', isDark ? 'text-amber-400/60' : 'text-amber-600/80')}>
-                    {t('rag.noneBody').split('{path}')[0]}
-                    <code className={clsx('font-mono', isDark ? 'text-amber-300/80' : 'text-amber-600')}>backend/data/knowledge_base/</code>
-                    {t('rag.noneBody').split('{path}')[1]}
-                  </p>
-                </div>
-              )}
-            </div>
+            <WorkflowPanel
+              uploaded={uploaded}
+              upload={upload}
+              cancerType={cancerType}
+              ctx={ctx}
+              detection={detection}
+              job={job}
+              ragStatus={ragStatus}
+              modelCatalog={modelCatalog}
+              selectedModel={selectedModel}
+              featureCatalog={featureCatalog}
+              selectedFeatures={selectedFeatures}
+              isRunning={isRunning}
+              isDone={isDone}
+              hasCtx={hasCtx}
+              isDark={isDark}
+              onCancerTypeChange={handleCancerTypeChange}
+              onUploaded={handleUploaded}
+              onReset={handleReset}
+              onAnalyse={handleAnalyse}
+              onCtxChange={patch => setCtx(p => ({ ...p, ...patch }))}
+              onModelChange={setSelectedModel}
+              onFeaturesChange={setSelectedFeatures}
+              onDetectionDismiss={() => setDetection(null)}
+            />
           )}
         </aside>
 
@@ -671,6 +443,7 @@ export default function App() {
             modality={upload?.modality ?? null}
             phase={upload?.series[0]?.phase ?? null}
             isRunning={isRunning}
+            cancerType={cancerType}
           />
         </main>
 

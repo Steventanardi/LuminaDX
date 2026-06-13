@@ -9,6 +9,16 @@ interface Props {
   modality: string | null
   phase?: string | null
   isRunning?: boolean
+  cancerType?: string
+}
+
+// Per-cancer segmentation overlay legend. Only cancers whose pipeline actually
+// draws masks have entries; image-based cancers (skin, breast) draw no masks so
+// they get no legend (the "analyzed" view there is the enhanced image).
+const SEG_LEGEND: Record<string, [string, TKey][]> = {
+  liver:      [['rgba(255,165,0,0.85)', 'dv.liver'], ['rgba(220,20,60,0.85)', 'dv.tumour']],
+  lung:       [['rgba(255,165,0,0.85)', 'dv.lung']],
+  colorectal: [['rgba(255,165,0,0.85)', 'dv.colon']],
 }
 
 const SHORTCUTS: [string, TKey][] = [
@@ -24,8 +34,9 @@ const SHORTCUTS: [string, TKey][] = [
 
 const MAX_THUMBS = 18
 
-export default function DicomViewer({ slices, rawSlices, modality, phase, isRunning }: Props) {
+export default function DicomViewer({ slices, rawSlices, modality, phase, isRunning, cancerType }: Props) {
   const { t } = useI18n()
+  const segLegend = SEG_LEGEND[cancerType ?? 'liver'] ?? []
   const [idx, setIdx]               = useState(0)
   const [splitView, setSplitView]   = useState(false)  // auto-enabled on analysis complete
   const [zoom, setZoom]             = useState(1)
@@ -265,15 +276,17 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
                 <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
                 <span className="text-[10px] font-bold text-slate-100 uppercase tracking-widest">Analyzed</span>
               </div>
-              {/* Segmentation legend */}
-              <div className="absolute top-2 left-28 z-10 flex flex-col gap-1 bg-black/55 rounded-lg px-2.5 py-2 backdrop-blur-sm pointer-events-none">
-                {([['rgba(255,165,0,0.85)', 'dv.liver'], ['rgba(220,20,60,0.85)', 'dv.tumour']] as [string, TKey][]).map(([color, labelKey]) => (
-                  <div key={labelKey} className="flex items-center gap-1.5">
-                    <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
-                    <span className="text-[11px] text-slate-200 font-mono">{t(labelKey)}</span>
-                  </div>
-                ))}
-              </div>
+              {/* Segmentation legend (only for cancers that draw masks) */}
+              {segLegend.length > 0 && (
+                <div className="absolute top-2 left-28 z-10 flex flex-col gap-1 bg-black/55 rounded-lg px-2.5 py-2 backdrop-blur-sm pointer-events-none">
+                  {segLegend.map(([color, labelKey]) => (
+                    <div key={labelKey} className="flex items-center gap-1.5">
+                      <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
+                      <span className="text-[11px] text-slate-200 font-mono">{t(labelKey)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Divider */}
@@ -297,9 +310,9 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
           /* ── Single view ── */
           <>
             <canvas ref={canvasRef} className="max-w-full max-h-full" style={canvasStyle} />
-            {!isRunning && slices.length > 0 && showOverlay && (
+            {!isRunning && slices.length > 0 && showOverlay && segLegend.length > 0 && (
               <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 bg-black/55 rounded-lg px-2.5 py-2 backdrop-blur-sm pointer-events-none">
-                {([['rgba(255,165,0,0.85)', 'dv.liver'], ['rgba(220,20,60,0.85)', 'dv.tumour']] as [string, TKey][]).map(([color, labelKey]) => (
+                {segLegend.map(([color, labelKey]) => (
                   <div key={labelKey} className="flex items-center gap-1.5">
                     <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
                     <span className="text-[11px] text-slate-200 font-mono">{t(labelKey)}</span>

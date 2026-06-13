@@ -50,14 +50,14 @@ export default function LiRadsScore({ category, score, scoreSystem, size = 'sm' 
   if (scoreSystem && scoreSystem !== 'LI-RADS' && score) {
     return (
       <span className={clsx(
-        'inline-flex items-center gap-1.5 rounded font-bold tracking-wide',
+        'inline-flex flex-wrap items-center gap-1.5 rounded font-bold tracking-wide text-left break-words',
         _genericColor(score),
         size === 'lg' ? 'px-4 py-2 text-sm' : 'px-2 py-1 text-xs',
       )}>
         {scoreSystem && size === 'lg' && (
-          <span className="font-normal opacity-70 text-xs">{scoreSystem}:</span>
+          <span className="font-normal opacity-70 text-xs shrink-0">{scoreSystem}:</span>
         )}
-        <span className={size === 'lg' ? 'text-base' : ''}>{score}</span>
+        <span className={clsx(size === 'lg' ? 'text-base' : '', 'min-w-0 break-words')}>{score}</span>
       </span>
     )
   }
@@ -65,12 +65,12 @@ export default function LiRadsScore({ category, score, scoreSystem, size = 'sm' 
   // LI-RADS badge (default / liver)
   return (
     <span className={clsx(
-      'inline-flex items-center gap-2 rounded font-bold tracking-wide',
+      'inline-flex flex-wrap items-center gap-2 rounded font-bold tracking-wide text-left break-words',
       _LIRADS_COLOR[category],
       size === 'lg' ? 'px-4 py-2 text-base' : 'px-2 py-1 text-xs',
     )}>
-      <span>{category}</span>
-      {size === 'lg' && <span className="font-normal opacity-80">— {t(_LIRADS_LABEL_KEY[category])}</span>}
+      <span className="shrink-0">{category}</span>
+      {size === 'lg' && <span className="font-normal opacity-80 min-w-0 break-words">— {t(_LIRADS_LABEL_KEY[category])}</span>}
     </span>
   )
 }

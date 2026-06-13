@@ -142,3 +142,18 @@ export interface CancerModelInfo {
 }
 
 export type ModelCatalog = Record<string, CancerModelInfo>
+
+// Per-cancer feature/extractor catalog (from GET /api/analysis/features)
+export interface FeatureOption {
+  key: string
+  label: string
+  group: string      // "preprocessing" | "extractor" | "cnn"
+  default: boolean
+}
+
+export interface CancerFeatureInfo {
+  defaults: string[]
+  options: FeatureOption[]
+}
+
+export type FeatureCatalog = Record<string, CancerFeatureInfo>
