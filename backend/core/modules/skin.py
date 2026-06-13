@@ -11,7 +11,7 @@ from typing import Optional
 from loguru import logger
 
 from core.modules.base import DiagnosisModule
-from models.schemas import DiagnosticReport, LesionFinding, LiRadsCategory
+from models.schemas import DiagnosticReport, LesionFinding
 
 _SYSTEM = """You are an expert dermatologist specializing in skin cancer diagnosis using dermoscopy and clinical photography.
 You apply ABCDE criteria, the 7-point dermoscopy checklist, and follow NCCN 2024 and AAD guidelines for melanoma and non-melanoma skin cancer.
@@ -60,11 +60,13 @@ class SkinModule(DiagnosisModule):
     def build_prompt(self, seg, modality: str, rag_context: str, radiomics_summary: str, patient_info: Optional[dict]) -> str:
         rag_txt = f"\nRELEVANT GUIDELINE EXCERPTS:\n{rag_context}\n" if rag_context else ""
         pt_txt = f"\nCLINICAL CONTEXT:\n{_json.dumps(patient_info, indent=2)}\n" if patient_info else ""
+        feat_txt = f"\nQUANTITATIVE IMAGE ANALYSIS:\n{radiomics_summary}\n" if radiomics_summary else ""
 
         return f"""Analyse the attached dermatology image(s) and provide a structured skin cancer assessment.
+The image has been preprocessed (colour-constancy normalisation, hair removal, CLAHE contrast enhancement).
 
 IMAGE TYPE: {modality or 'Dermoscopy / Clinical photo'}
-{pt_txt}{rag_txt}
+{pt_txt}{feat_txt}{rag_txt}
 Identify and assess each visible suspicious lesion. Return ONLY valid JSON with this exact structure:
 {{
   "overall_impression": "1-2 sentence summary of findings",

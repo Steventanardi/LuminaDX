@@ -51,11 +51,13 @@ class BreastModule(DiagnosisModule):
     def build_prompt(self, seg, modality: str, rag_context: str, radiomics_summary: str, patient_info: Optional[dict]) -> str:
         rag_txt = f"\nRELEVANT GUIDELINE EXCERPTS:\n{rag_context}\n" if rag_context else ""
         pt_txt = f"\nCLINICAL CONTEXT:\n{_json.dumps(patient_info, indent=2)}\n" if patient_info else ""
+        feat_txt = f"\nQUANTITATIVE IMAGE ANALYSIS:\n{radiomics_summary}\n" if radiomics_summary else ""
 
         return f"""Analyse the attached breast imaging and provide a structured BI-RADS assessment.
+The image has been preprocessed with CLAHE contrast enhancement to accentuate masses, calcifications and architectural distortion.
 
 MODALITY: {modality or 'Mammography / Ultrasound'}
-{pt_txt}{rag_txt}
+{pt_txt}{feat_txt}{rag_txt}
 Return ONLY valid JSON with this exact structure:
 {{
   "overall_impression": "1-2 sentence summary",

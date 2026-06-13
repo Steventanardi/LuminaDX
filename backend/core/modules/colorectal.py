@@ -6,7 +6,7 @@ from typing import Optional
 
 from loguru import logger
 
-from core.modules.base import DiagnosisModule
+from core.modules.base import DiagnosisModule, SegmentationSpec
 from models.schemas import DiagnosticReport, LesionFinding
 
 _SYSTEM = """You are an expert abdominal radiologist specializing in colorectal cancer detection using CT colonography (CTC) and CT staging.
@@ -42,6 +42,13 @@ class ColorectalModule(DiagnosisModule):
     display_name = "Colorectal (C-RADS / TNM)"
     pipeline = "volumetric"
 
+    def segmentation_spec(self) -> SegmentationSpec:
+        return SegmentationSpec(
+            organ_roi=["colon", "sigmoid_colon", "small_bowel"],
+            lesion_task=None,
+            tumor_mask_names=[],
+        )
+
     def rag_query(self, seg, modality: str) -> str:
         return f"colorectal cancer {modality} CT colonography C-RADS diagnosis staging guidelines"
 
@@ -51,11 +58,12 @@ class ColorectalModule(DiagnosisModule):
     def build_prompt(self, seg, modality: str, rag_context: str, radiomics_summary: str, patient_info: Optional[dict]) -> str:
         rag_txt = f"\nRELEVANT GUIDELINE EXCERPTS:\n{rag_context}\n" if rag_context else ""
         pt_txt = f"\nCLINICAL CONTEXT:\n{_json.dumps(patient_info, indent=2)}\n" if patient_info else ""
+        feat_txt = f"\nQUANTITATIVE IMAGE ANALYSIS (use to support imaging observations):\n{radiomics_summary}\n" if radiomics_summary else ""
 
         return f"""Analyse the attached colorectal imaging and provide a structured C-RADS / staging assessment.
 
 MODALITY: {modality}
-{pt_txt}{rag_txt}
+{pt_txt}{feat_txt}{rag_txt}
 Return ONLY valid JSON with this exact structure:
 {{
   "overall_impression": "1-2 sentence summary",
