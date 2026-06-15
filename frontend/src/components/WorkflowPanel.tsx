@@ -21,7 +21,6 @@ interface Props {
   upload: UploadResponse | null
   cancerType: CancerType
   ctx: PatientContext
-  detection: { type: string; confidence: string; reason: string } | null
   job: AnalysisJob | null
   ragStatus: { chunks: number; pdf_count: number } | null
   modelCatalog: ModelCatalog | null
@@ -39,23 +38,22 @@ interface Props {
   onCtxChange: (patch: Partial<PatientContext>) => void
   onModelChange: (model: string) => void
   onFeaturesChange: (features: string[]) => void
-  onDetectionDismiss: () => void
 }
 
 export default function WorkflowPanel({
-  uploaded, upload, cancerType, ctx, detection, job, ragStatus,
+  uploaded, upload, cancerType, ctx, job, ragStatus,
   modelCatalog, selectedModel, featureCatalog, selectedFeatures,
   isRunning, isDone, hasCtx, isDark,
   onCancerTypeChange, onUploaded, onReset, onAnalyse, onCtxChange,
-  onModelChange, onFeaturesChange, onDetectionDismiss,
+  onModelChange, onFeaturesChange,
 }: Props) {
   const { t } = useI18n()
 
   const INPUT = clsx(
     'w-full rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-accent/50 transition-colors font-mono border',
     isDark
-      ? 'bg-white/5 border-white/[0.08] text-slate-200 placeholder:text-slate-600'
-      : 'bg-white/70 border-black/[0.07] text-slate-800 placeholder:text-slate-400',
+      ? 'bg-[#121924] border-[#1f2835] text-slate-200 placeholder:text-slate-600'
+      : 'bg-white border-[#e2e8ee] text-slate-800 placeholder:text-slate-400',
   )
 
   return (
@@ -77,8 +75,8 @@ export default function WorkflowPanel({
                     cancerType === ct
                       ? 'bg-accent text-white border-accent/50 shadow-sm shadow-accent/25'
                       : isDark
-                        ? 'bg-white/5 text-slate-400 border-white/[0.08] hover:border-accent/40 hover:text-slate-200'
-                        : 'bg-white/60 text-slate-500 border-black/[0.07] hover:border-accent/30 hover:text-slate-700',
+                        ? 'bg-[#121924] text-slate-400 border-[#1f2835] hover:border-accent/40 hover:text-slate-200'
+                        : 'bg-white text-slate-500 border-[#e2e8ee] hover:border-accent/30 hover:text-slate-700',
                   )}
                 >
                   <span>{m.icon}</span>
@@ -119,48 +117,6 @@ export default function WorkflowPanel({
                 </div>
               </div>
 
-              {/* Auto-detection badge */}
-              {detection && (
-                <div className={clsx('rounded-xl p-3 border space-y-1.5',
-                  detection.confidence === 'high'
-                    ? isDark ? 'bg-sky-950/40 border-sky-700/40' : 'bg-sky-50 border-sky-200'
-                    : isDark ? 'bg-slate-800/40 border-white/[0.08]' : 'bg-white/50 border-black/[0.07]')}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <svg className={clsx('w-3 h-3 shrink-0',
-                        detection.confidence === 'high'
-                          ? isDark ? 'text-sky-400' : 'text-sky-600'
-                          : 'text-slate-400')}
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round"
-                          d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                      </svg>
-                      <span className={clsx('text-[10px] font-semibold uppercase tracking-wide',
-                        detection.confidence === 'high'
-                          ? isDark ? 'text-sky-400' : 'text-sky-700'
-                          : isDark ? 'text-slate-400' : 'text-slate-500')}>
-                        Auto-detected: {CANCER_TYPE_META[detection.type as CancerType]?.icon} {CANCER_TYPE_META[detection.type as CancerType]?.label}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className={clsx('text-[9px] font-bold uppercase px-1.5 py-0.5 rounded',
-                        detection.confidence === 'high' ? 'bg-sky-500 text-white' : 'bg-slate-500 text-white')}>
-                        {detection.confidence}
-                      </span>
-                      <button onClick={onDetectionDismiss}
-                        className="text-slate-400 hover:text-slate-600 text-xs leading-none">×</button>
-                    </div>
-                  </div>
-                  {detection.reason && (
-                    <p className={clsx('text-[9px] font-mono leading-relaxed truncate',
-                      isDark ? 'text-slate-500' : 'text-slate-400')}
-                      title={detection.reason}>
-                      {detection.reason}
-                    </p>
-                  )}
-                </div>
-              )}
-
               {/* Post-upload cancer type override */}
               <div className="space-y-1.5">
                 <span className={clsx('text-[10px] font-semibold uppercase tracking-widest', isDark ? 'text-slate-500' : 'text-slate-400')}>Cancer Type</span>
@@ -177,8 +133,8 @@ export default function WorkflowPanel({
                           cancerType === ct
                             ? 'bg-accent text-white border-accent/50 shadow-sm shadow-accent/25'
                             : isDark
-                              ? 'bg-white/5 text-slate-400 border-white/[0.08] hover:border-accent/40 hover:text-slate-200'
-                              : 'bg-white/60 text-slate-500 border-black/[0.07] hover:border-accent/30 hover:text-slate-700',
+                              ? 'bg-[#121924] text-slate-400 border-[#1f2835] hover:border-accent/40 hover:text-slate-200'
+                              : 'bg-white text-slate-500 border-[#e2e8ee] hover:border-accent/30 hover:text-slate-700',
                         )}
                       >
                         <span>{m.icon}</span>
@@ -210,8 +166,8 @@ export default function WorkflowPanel({
                     <button key={key} onClick={() => onCtxChange({ [key]: !ctx[key] })}
                       className={clsx('px-2.5 py-1 rounded-full text-xs font-medium transition-all',
                         ctx[key] ? 'bg-accent text-white shadow-sm shadow-accent/25'
-                          : isDark ? 'bg-white/5 text-slate-500 border border-white/[0.08] hover:border-accent/40 hover:text-slate-300'
-                          : 'bg-white/60 text-slate-500 border border-black/[0.08] hover:border-accent/30 hover:text-slate-700')}>
+                          : isDark ? 'bg-[#121924] text-slate-500 border border-[#1f2835] hover:border-accent/40 hover:text-slate-300'
+                          : 'bg-white text-slate-500 border border-[#e2e8ee] hover:border-accent/30 hover:text-slate-700')}>
                       {t(labelKey[key])}
                     </button>
                   )
@@ -256,7 +212,7 @@ export default function WorkflowPanel({
                   disabled={isRunning}
                   style={{ colorScheme: isDark ? 'dark' : 'light' }}
                   className={clsx('w-full rounded-lg px-2.5 py-2 text-xs font-mono border focus:outline-none focus:border-accent/50 transition-colors disabled:opacity-50',
-                    isDark ? 'bg-slate-800 border-white/[0.12] text-slate-100' : 'bg-white border-black/[0.12] text-slate-800')}
+                    isDark ? 'bg-slate-800 border-[#1f2835] text-slate-100' : 'bg-white border-[#e2e8ee] text-slate-800')}
                 >
                   {modelCatalog[cancerType].options.map(m => (
                     <option key={m.tag} value={m.tag}
@@ -279,7 +235,7 @@ export default function WorkflowPanel({
                           isRunning && 'opacity-50 cursor-not-allowed',
                           on
                             ? 'border-accent/40 bg-accent/10 text-accent'
-                            : isDark ? 'border-white/[0.08] text-slate-300 hover:bg-white/[0.04]' : 'border-black/[0.08] text-slate-600 hover:bg-black/[0.03]')}>
+                            : isDark ? 'border-[#1f2835] text-slate-300 hover:bg-[#121924]' : 'border-[#e2e8ee] text-slate-600 hover:bg-slate-100')}>
                         <input type="checkbox" checked={on} disabled={isRunning}
                           onChange={() => onFeaturesChange(
                             on ? selectedFeatures.filter(k => k !== f.key) : [...selectedFeatures, f.key],
@@ -302,8 +258,8 @@ export default function WorkflowPanel({
               className={clsx('w-full py-2.5 rounded-xl font-semibold text-sm transition-all duration-200',
                 isRunning ? 'bg-accent/15 text-accent/60 cursor-not-allowed'
                   : isDone
-                    ? isDark ? 'bg-white/5 border border-white/[0.08] text-slate-400 hover:border-accent/40 hover:text-accent' : 'bg-white/60 border border-black/[0.08] text-slate-500 hover:border-accent/30 hover:text-accent'
-                    : 'bg-accent hover:bg-violet-600 active:bg-violet-700 text-white shadow-lg shadow-violet-300/30')}>
+                    ? isDark ? 'bg-[#121924] border border-[#1f2835] text-slate-400 hover:border-accent/40 hover:text-accent' : 'bg-white border border-[#e2e8ee] text-slate-500 hover:border-accent/30 hover:text-accent'
+                    : 'bg-accent hover:bg-teal-700 active:bg-teal-800 text-white shadow-lg shadow-teal-900/20')}>
               {isRunning ? t('run.analysing') : isDone ? t('run.again') : t('run.start')}
             </button>
           </div>
@@ -312,7 +268,7 @@ export default function WorkflowPanel({
 
       {/* Progress */}
       {job && (
-        <div className={clsx('pt-4 space-y-2 border-t', isDark ? 'border-white/[0.05]' : 'border-black/[0.05]')}>
+        <div className={clsx('pt-4 space-y-2 border-t', isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')}>
           <ProgressTracker job={job} isDark={isDark} />
           {job.status === 'failed' && job.error && (
             <div className={clsx('rounded-xl p-3 space-y-1 border', isDark ? 'bg-red-950/30 border-red-900/30' : 'bg-red-50/80 border-red-200/70')}>

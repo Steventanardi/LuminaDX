@@ -45,7 +45,7 @@ export default function UploadPanel({ onUploaded, cancerType = 'liver', isDark =
       <div {...getRootProps()} className={clsx(
         'border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all duration-200',
         isDragActive ? 'border-accent bg-accent/8 scale-[1.01]'
-          : isDark ? 'border-white/[0.08] hover:border-accent/40 hover:bg-accent/5' : 'border-slate-200/80 hover:border-accent/40 hover:bg-accent/5',
+          : isDark ? 'border-[#1f2835] hover:border-accent/40 hover:bg-accent/5' : 'border-slate-200/80 hover:border-accent/40 hover:bg-accent/5',
         uploading && 'opacity-50 cursor-not-allowed scale-100',
       )}>
         <input {...getInputProps()} />

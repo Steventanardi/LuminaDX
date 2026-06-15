@@ -17,12 +17,12 @@ export default function Toast({ message, type = 'info', isDark = false, onClose 
   return (
     <div className={clsx(
       'fixed bottom-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl',
-      'shadow-2xl border backdrop-blur-xl toast-enter max-w-sm',
+      'shadow-2xl border toast-enter max-w-sm',
       type === 'success'
-        ? isDark ? 'bg-emerald-950/90 border-emerald-800/50 text-emerald-200' : 'bg-white/90 border-emerald-200 text-emerald-800'
+        ? isDark ? 'bg-emerald-950/90 border-emerald-800/50 text-emerald-200' : 'bg-white border-emerald-200 text-emerald-800'
         : type === 'error'
-        ? isDark ? 'bg-red-950/90 border-red-800/50 text-red-200' : 'bg-white/90 border-red-200 text-red-700'
-        : isDark ? 'bg-slate-900/90 border-white/10 text-slate-200' : 'bg-white/90 border-black/10 text-slate-700',
+        ? isDark ? 'bg-red-950/90 border-red-800/50 text-red-200' : 'bg-white border-red-200 text-red-700'
+        : isDark ? 'bg-[#10151d] border-[#1f2835] text-slate-200' : 'bg-white border-[#e2e8ee] text-slate-700',
     )}>
       {type === 'success' && (
         <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">

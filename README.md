@@ -178,6 +178,23 @@ To enable Retrieval-Augmented Generation (RAG) with clinical guidelines:
    python ingest_guidelines.py
    ```
 
+### 7. Optional: Download Evaluation Datasets
+
+LuminaDx supports several public imaging datasets (ISIC, TCIA, etc.) for testing and evaluation. We provide automated scripts to help structure and download these.
+
+1. Ensure you have the required prerequisites (e.g., `kaggle.json` for Kaggle datasets, NBIA Data Retriever for TCIA).
+2. Use the provided scripts to fetch them into the `Datasets/` directory:
+   ```bash
+   # Download Kaggle datasets (ISIC, RSNA, HAM10000)
+   python scripts/download/download_kaggle.py all
+   
+   # Get instructions/manifests for TCIA datasets (HCC-TACE-Seg, Lung-PET-CT-Dx)
+   python scripts/download/download_tcia.py all
+   
+   # Get instructions for Zenodo/GitHub datasets
+   python scripts/download/download_zenodo.py all
+   ```
+
 ---
 
 ## 📸 Screenshots
@@ -312,8 +329,9 @@ LuminaDx/
 │   │   ├── services/        # API clients
 │   │   └── i18n.tsx         # EN / zh-TW translation
 │   └── package.json
-├── scripts/                 # Utility scripts (seed, validate, setup)
+├── scripts/                 # Utility scripts (seed, validate, setup, download)
 ├── docs/                    # Documentation and thesis materials
+├── Datasets/                # Organised evaluation datasets by modality
 ├── Launch.bat               # One-click launcher (Windows)
 └── README.md
 ```

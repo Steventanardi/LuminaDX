@@ -7,7 +7,7 @@ const LIRADS_COLOR: Record<LiRadsCategory | string, string> = {
   'LR-3':          '#d97706',
   'LR-4':          '#ea580c',
   'LR-5':          '#dc2626',
-  'LR-M':          '#7c3aed',
+  'LR-M':          '#be185d',
   'LR-TIV':        '#1d4ed8',
   'Indeterminate': '#6b7280',
 }

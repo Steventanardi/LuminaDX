@@ -40,8 +40,6 @@ export const dicomApi = {
   },
   preview: (studyId: string, n?: number): Promise<{ slices: string[]; count: number }> =>
     http.get(`/dicom/preview/${studyId}`, { params: n ? { n } : undefined }).then(r => r.data),
-  detect: (studyId: string): Promise<{ suggested_cancer_type: string; detection_confidence: string; detection_reason: string }> =>
-    http.get(`/dicom/detect/${studyId}`).then(r => r.data),
   updateCancerType: (studyId: string, cancerType: string): Promise<void> =>
     http.patch(`/dicom/studies/${studyId}/cancer-type`, { cancer_type: cancerType }).then(() => undefined),
   listStudies: (): Promise<DicomStudy[]> =>

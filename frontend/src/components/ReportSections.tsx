@@ -48,8 +48,8 @@ export function EditTextarea({
       className={clsx(
         'w-full rounded-xl px-3 py-2 text-xs border resize-y focus:outline-none focus:border-accent/60 transition-colors leading-relaxed',
         isDark
-          ? 'bg-white/[0.08] border-white/[0.15] text-slate-200 placeholder:text-slate-500'
-          : 'bg-white/80 border-black/[0.10] text-slate-800 placeholder:text-slate-400',
+          ? 'bg-[#121924] border-[#1f2835] text-slate-200 placeholder:text-slate-500'
+          : 'bg-white border-[#e2e8ee] text-slate-800 placeholder:text-slate-400',
       )}
     />
   )
@@ -69,8 +69,8 @@ export function EditInput({
       className={clsx(
         'w-full rounded-lg px-3 py-1.5 text-xs border focus:outline-none focus:border-accent/60 transition-colors',
         isDark
-          ? 'bg-white/[0.08] border-white/[0.15] text-slate-200 placeholder:text-slate-500'
-          : 'bg-white/80 border-black/[0.10] text-slate-800 placeholder:text-slate-400',
+          ? 'bg-[#121924] border-[#1f2835] text-slate-200 placeholder:text-slate-500'
+          : 'bg-white border-[#e2e8ee] text-slate-800 placeholder:text-slate-400',
       )}
     />
   )
@@ -92,7 +92,7 @@ export function LesionCard({
   const upd = (patch: Partial<LesionFinding>) => onUpdate({ ...l, ...patch })
 
   const CARD = clsx('border rounded-xl overflow-hidden',
-    isDark ? 'bg-slate-800/50 border-white/[0.08]' : 'bg-white/50 border-black/[0.06]',
+    isDark ? 'bg-[#121924] border-[#1f2835]' : 'bg-white border-[#e2e8ee]',
     editMode && (isDark ? 'border-accent/30' : 'border-accent/25'),
   )
 
@@ -101,7 +101,7 @@ export function LesionCard({
       <button
         onClick={() => setExpanded(e => !e)}
         className={clsx('w-full flex flex-col md:flex-row md:items-center justify-between gap-3 px-3.5 py-2.5 transition-colors text-left',
-          isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.03]')}>
+          isDark ? 'hover:bg-[#121924]' : 'hover:bg-slate-100')}>
         <div className="flex items-center gap-2 flex-wrap">
           <span className={clsx('font-semibold text-sm font-mono', isDark ? 'text-slate-100' : 'text-slate-800')}>
             {l.lesion_id}
@@ -122,7 +122,7 @@ export function LesionCard({
 
       {expanded && (
         <div className={clsx('px-3.5 pb-3.5 space-y-3 border-t',
-          isDark ? 'border-white/[0.05]' : 'border-black/[0.04]')}>
+          isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')}>
 
           {editMode ? (
             <div className="space-y-2.5 pt-2.5">
@@ -180,7 +180,7 @@ export function LesionCard({
                     ['DWI',     l.diffusion_restriction],
                   ].map(([label, val]) => (
                     <div key={String(label)} className={clsx('flex items-center justify-between py-1 border-b last:border-0',
-                      isDark ? 'border-white/[0.05]' : 'border-black/[0.04]')}>
+                      isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')}>
                       <span className="text-xs text-slate-400">{label}</span>
                       {val === null || val === undefined
                         ? <span className="text-slate-400 font-mono text-xs">&mdash;</span>
@@ -217,7 +217,7 @@ export function LesionCard({
               )}
               {l.reasoning && (
                 <p className={clsx('text-xs italic border-t pt-2.5 leading-relaxed',
-                  isDark ? 'text-slate-400 border-white/[0.05]' : 'text-slate-500 border-black/[0.04]')}>
+                  isDark ? 'text-slate-400 border-[#1f2835]' : 'text-slate-500 border-[#e2e8ee]')}>
                   {l.reasoning}
                 </p>
               )}
@@ -253,7 +253,7 @@ export function SignOffBadge({ signOff, isDark = false }: { signOff: SignOff; is
       </p>
       {signOff.comments && (
         <p className={clsx('text-xs italic border-t pt-1.5',
-          isDark ? 'text-slate-400 border-white/[0.05]' : 'text-slate-500 border-black/[0.05]')}>
+          isDark ? 'text-slate-400 border-[#1f2835]' : 'text-slate-500 border-[#e2e8ee]')}>
           &ldquo;{signOff.comments}&rdquo;
         </p>
       )}
@@ -285,12 +285,12 @@ export function SignOffForm({
 
   const INPUT = clsx(
     'mt-1 w-full border rounded-lg px-3 py-2 text-xs placeholder:text-slate-500 focus:outline-none focus:border-accent/50 transition-colors font-mono',
-    isDark ? 'bg-white/[0.08] border-white/[0.12] text-slate-200' : 'bg-white/70 border-black/[0.07] text-slate-800',
+    isDark ? 'bg-[#121924] border-[#1f2835] text-slate-200' : 'bg-white border-[#e2e8ee] text-slate-800',
   )
 
   return (
     <div className={clsx('space-y-3 border rounded-xl p-3.5',
-      isDark ? 'bg-slate-800/40 border-white/[0.08]' : 'bg-white/40 border-black/[0.06]')}>
+      isDark ? 'bg-[#121924] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
       <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('ai.radiologistReview')}</p>
       <label className="block">
         <span className={clsx('text-xs font-medium', isDark ? 'text-slate-400' : 'text-slate-500')}>{t('ai.nameId')}</span>
@@ -336,7 +336,7 @@ export function RadiomicsSection({ summary, isDark = false }: { summary: string;
       </button>
       <pre className={clsx(
         'text-xs whitespace-pre-wrap break-words font-mono rounded-xl px-3 py-2 leading-relaxed border',
-        isDark ? 'bg-slate-800/50 border-white/[0.06] text-slate-400' : 'bg-white/50 border-black/[0.05] text-slate-500',
+        isDark ? 'bg-[#121924] border-[#1f2835] text-slate-400' : 'bg-white border-[#e2e8ee] text-slate-500',
         !expanded && 'italic',
       )}>
         {expanded ? summary : `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? '\n…' : ''}`}

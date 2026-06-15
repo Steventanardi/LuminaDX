@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 500
     rag_chunk_overlap: int = 50
     rag_top_k: int = 5
+    # Max chunks embedded per Ollama request during ingestion. Large PDFs in one
+    # batch OOM-crash the embed runner, so cap it.
+    embed_batch_size: int = 64
 
     # When False, extract Original-image features only (fast). Wavelet/LoG add
     # ~1,000 features that are NOT used in the LLM summary, so they are off by

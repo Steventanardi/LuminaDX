@@ -11,7 +11,7 @@ const en = {
   'lang.title': 'Switch language / 切換語言',
 
   // Header
-  'header.subtitle': 'LI-RADS v2024 · RAG-Augmented · Local LLM',
+  'header.subtitle': '{system} · RAG-Augmented · Local LLM',
   'header.topFinding': 'Top finding',
   'header.guidelines': '{n} guidelines',
   'header.noGuidelines': 'No guidelines',
@@ -192,7 +192,7 @@ const zh: Record<TKey, string> = {
   'lang.next': 'EN',
   'lang.title': '切換語言 / Switch language',
 
-  'header.subtitle': 'LI-RADS v2024 · RAG 強化 · 本地 LLM',
+  'header.subtitle': '{system} · RAG 強化 · 本地 LLM',
   'header.topFinding': '主要發現',
   'header.guidelines': '{n} 份指引',
   'header.noGuidelines': '無指引',

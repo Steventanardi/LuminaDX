@@ -123,9 +123,17 @@ class RAGEngine:
             return ""
 
     async def _embed(self, texts: List[str]) -> List[List[float]]:
-        # Batch in one call instead of one HTTP round-trip per chunk — far faster
-        # when ingesting a full guideline PDF (hundreds of chunks).
-        return await self._embeddings.aembed_documents(texts)
+        # Embed in capped batches. Sending every chunk of a large guideline PDF
+        # in a single request OOM-crashes the Ollama embed runner (the runner
+        # subprocess dies and its port starts refusing connections), so cap the
+        # batch size and issue sequential requests instead.
+        batch = settings.embed_batch_size
+        if len(texts) <= batch:
+            return await self._embeddings.aembed_documents(texts)
+        out: List[List[float]] = []
+        for i in range(0, len(texts), batch):
+            out.extend(await self._embeddings.aembed_documents(texts[i : i + batch]))
+        return out
 
     @property
     def chunk_count(self) -> int:

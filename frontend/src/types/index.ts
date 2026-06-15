@@ -46,9 +46,6 @@ export interface UploadResponse {
   modality: string | null
   series: SeriesInfo[]
   message: string
-  suggested_cancer_type?: string | null    // auto-detected from DICOM metadata
-  detection_confidence?: 'high' | 'medium' | 'low' | null
-  detection_reason?: string | null
 }
 
 export interface LesionFinding {
@@ -123,7 +120,7 @@ export interface PatientContext {
 }
 
 export const CANCER_TYPE_META: Record<CancerType, { label: string; icon: string; scoreSystem: string; color: string }> = {
-  liver:      { label: 'Liver',      icon: '🫀', scoreSystem: 'LI-RADS',    color: 'violet'  },
+  liver:      { label: 'Liver',      icon: '🫀', scoreSystem: 'LI-RADS',    color: 'teal'    },
   lung:       { label: 'Lung',       icon: '🫁', scoreSystem: 'Lung-RADS',  color: 'sky'     },
   skin:       { label: 'Skin',       icon: '🩹', scoreSystem: 'ABCDE',      color: 'amber'   },
   breast:     { label: 'Breast',     icon: '🎀', scoreSystem: 'BI-RADS',    color: 'pink'    },

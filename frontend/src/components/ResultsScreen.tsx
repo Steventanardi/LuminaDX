@@ -35,7 +35,7 @@ export default function ResultsScreen({ slices, rawSlices, modality, phase, repo
       <div className="flex-1 min-w-0 bg-black flex flex-col overflow-hidden">
 
         {/* Viewer toolbar */}
-        <div className="flex items-center gap-3 px-3 py-2 bg-panel/80 border-b border-border backdrop-blur-sm shrink-0 text-xs">
+        <div className="flex items-center gap-3 px-3 py-2 bg-panel/80 border-b border-border shrink-0 text-xs">
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded-md bg-border text-slate-300 font-mono font-semibold text-[10px]">
               {modality ?? 'SCAN'}

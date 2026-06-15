@@ -150,9 +150,6 @@ class UploadResponse(BaseModel):
     modality: Optional[str]
     series: List[SeriesInfo] = []
     message: str
-    suggested_cancer_type: Optional[str] = None   # e.g. "liver" — from DICOM metadata
-    detection_confidence: Optional[str] = None    # "high" | "medium" | "low"
-    detection_reason: Optional[str] = None        # e.g. "BodyPartExamined: LIVER"
 
 
 class RagQueryRequest(BaseModel):

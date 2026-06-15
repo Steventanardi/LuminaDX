@@ -26,30 +26,24 @@ export default function LoginScreen({ isDark }: Props) {
   }
 
   const GLASS = clsx(
-    'backdrop-blur-xl border shadow-2xl rounded-2xl',
-    isDark ? 'bg-slate-900/80 border-white/[0.08]' : 'bg-white/70 border-white/90',
+    'border shadow-2xl rounded-2xl',
+    isDark ? 'bg-[#10151d] border-[#1f2835]' : 'bg-white border-[#e2e8ee]',
   )
 
   const INPUT = clsx(
     'w-full rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-accent/60 transition-colors border',
     isDark
-      ? 'bg-white/5 border-white/[0.1] text-slate-200 placeholder:text-slate-600'
-      : 'bg-white/70 border-black/[0.08] text-slate-800 placeholder:text-slate-400',
+      ? 'bg-[#121924] border-[#1f2835] text-slate-200 placeholder:text-slate-600'
+      : 'bg-white border-[#e2e8ee] text-slate-800 placeholder:text-slate-400',
   )
 
   return (
     <div className={clsx(
       'h-screen flex flex-col items-center justify-center relative overflow-hidden',
-      isDark ? 'bg-slate-950' : 'bg-surface',
+      isDark ? 'bg-[#0a0e14]' : 'bg-surface',
     )}>
 
-      {/* Background blobs */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] rounded-full blur-[120px] opacity-40"
-          style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.6) 0%, transparent 65%)' }} />
-        <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] rounded-full blur-[100px] opacity-30"
-          style={{ background: 'radial-gradient(circle, rgba(125,211,252,0.5) 0%, transparent 65%)' }} />
-      </div>
+      {/* Flat background — blobs removed for a calmer clinical feel */}
 
       <div className={clsx(GLASS, 'w-full max-w-sm mx-4 p-8 space-y-6 relative z-10')}>
 
@@ -122,7 +116,7 @@ export default function LoginScreen({ isDark }: Props) {
               'w-full py-3 rounded-xl font-semibold text-sm transition-all duration-200',
               loading || !email.trim() || !password
                 ? 'bg-accent/40 text-white/50 cursor-not-allowed'
-                : 'bg-accent hover:bg-violet-600 active:bg-violet-700 text-white shadow-lg shadow-violet-300/30',
+                : 'bg-accent hover:bg-teal-700 active:bg-teal-800 text-white shadow-lg shadow-teal-900/20',
             )}
           >
             {loading ? (

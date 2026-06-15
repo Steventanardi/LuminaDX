@@ -81,7 +81,7 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
       ctx.fillStyle = 'rgba(0,0,0,0.60)'
       ctx.fillRect(0, canvas.height - 28, canvas.width, 28)
       ctx.font = '12px monospace'
-      ctx.fillStyle = label.includes('ORIGINAL') ? '#94a3b8' : '#facc15'
+      ctx.fillStyle = label.includes('ORIGINAL') ? '#94a3b8' : '#2dd4bf'
       const phaseLabel = phase ? ` ${phase.charAt(0).toUpperCase() + phase.slice(1)}` : ''
       ctx.fillText(
         `${modality ?? ''}${phaseLabel} ${label} | ${t('dv.slice', { n: `${i + 1} / ${pool.length}` })}`,
@@ -168,7 +168,7 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
     return (
       <div className="flex items-center justify-center h-full text-slate-500 text-sm">
         <div className="text-center space-y-3">
-          <div className="w-16 h-16 rounded-2xl bg-slate-800/80 flex items-center justify-center mx-auto">
+          <div className="w-16 h-16 rounded-2xl bg-[#121924] flex items-center justify-center mx-auto">
             <svg className="w-9 h-9 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h14a2 2 0 012 2V19a2 2 0 01-2 2H5a2 2 0 01-2-2V5z" />
               <circle cx="12" cy="10" r="3" />
@@ -190,7 +190,7 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
     <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5" onMouseDown={e => e.stopPropagation()}>
       {(wlAdjusted || zoomAdjusted) && (
         <button onClick={() => { setWl({ brightness: 1, contrast: 1 }); setZoom(1) }}
-          className="px-2 py-1 rounded-lg text-[10px] font-mono bg-slate-800/80 text-amber-400 border border-amber-700/40 hover:bg-slate-700 transition-colors">
+          className="px-2 py-1 rounded-lg text-[10px] font-mono bg-[#121924] text-amber-400 border border-amber-700/40 hover:bg-slate-700 transition-colors">
           {t('dv.resetR')}
         </button>
       )}
@@ -272,13 +272,13 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
             <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden min-h-0">
               <canvas ref={canvasRef} className="max-w-full max-h-full" style={canvasStyle} />
               {/* Analyzed label pill */}
-              <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-black/60 rounded-lg px-2.5 py-1.5 backdrop-blur-sm pointer-events-none">
+              <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-black/60 rounded-lg px-2.5 py-1.5 pointer-events-none">
                 <div className="w-2 h-2 rounded-full bg-accent shrink-0" />
                 <span className="text-[10px] font-bold text-slate-100 uppercase tracking-widest">Analyzed</span>
               </div>
               {/* Segmentation legend (only for cancers that draw masks) */}
               {segLegend.length > 0 && (
-                <div className="absolute top-2 left-28 z-10 flex flex-col gap-1 bg-black/55 rounded-lg px-2.5 py-2 backdrop-blur-sm pointer-events-none">
+                <div className="absolute top-2 left-28 z-10 flex flex-col gap-1 bg-black/55 rounded-lg px-2.5 py-2 pointer-events-none">
                   {segLegend.map(([color, labelKey]) => (
                     <div key={labelKey} className="flex items-center gap-1.5">
                       <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
@@ -290,7 +290,7 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
             </div>
 
             {/* Divider */}
-            <div className="h-px shrink-0 bg-white/[0.08] relative flex items-center justify-center">
+            <div className="h-px shrink-0 bg-[#121924] relative flex items-center justify-center">
               <span className="absolute text-[9px] font-bold uppercase tracking-[0.2em] text-slate-600 bg-black px-3">
                 ▲ AI Analysis &nbsp;·&nbsp; Original ▼
               </span>
@@ -300,7 +300,7 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
             <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden min-h-0">
               <canvas ref={rawCanvasRef} className="max-w-full max-h-full" style={canvasStyle} />
               {/* Original label pill */}
-              <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-black/60 rounded-lg px-2.5 py-1.5 backdrop-blur-sm pointer-events-none">
+              <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5 bg-black/60 rounded-lg px-2.5 py-1.5 pointer-events-none">
                 <div className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
                 <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Original</span>
               </div>
@@ -311,7 +311,7 @@ export default function DicomViewer({ slices, rawSlices, modality, phase, isRunn
           <>
             <canvas ref={canvasRef} className="max-w-full max-h-full" style={canvasStyle} />
             {!isRunning && slices.length > 0 && showOverlay && segLegend.length > 0 && (
-              <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 bg-black/55 rounded-lg px-2.5 py-2 backdrop-blur-sm pointer-events-none">
+              <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 bg-black/55 rounded-lg px-2.5 py-2 pointer-events-none">
                 {segLegend.map(([color, labelKey]) => (
                   <div key={labelKey} className="flex items-center gap-1.5">
                     <div className="w-3 h-3 rounded-sm" style={{ background: color }} />

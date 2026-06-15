@@ -5,6 +5,7 @@ import { analysisApi } from '../services/api'
 import { useI18n } from '../i18n'
 import type { DiagnosticReport, LesionFinding, SignOff, SignOffDecision } from '../types'
 import ReportPDF from './ReportPDF'
+import LiRadsScore from './LiRadsScore'
 import {
   deepCopy, toLines, fromLines,
   SectionHeader, EditTextarea, EditInput,
@@ -115,18 +116,62 @@ export default function AIReportPanel({
 
   const cur = editMode ? editBuf : draft
 
+  // Primary lesion → reference-style result card (real fields only; no fabricated confidence)
+  const primary = cur.lesions[0] ?? null
+  const sizeStr = primary?.size_mm != null ? `${(primary.size_mm / 10).toFixed(1)} cm` : '—'
+  const enhStr  = primary?.aphe_present === true ? 'Arterial (APHE)' : primary?.aphe_present === false ? 'None' : '—'
+  const washStr = primary?.washout_present === true ? 'Present' : primary?.washout_present === false ? 'Absent' : '—'
+  const subtitle = primary
+    ? (primary.lirads_category && primary.lirads_category !== 'Indeterminate'
+        ? `${primary.lirads_category} · primary finding`
+        : primary.score_system && primary.score ? `${primary.score_system} ${primary.score} · primary finding` : 'Primary finding')
+    : ''
+
   // ── Shared style helpers ─────────────────────────────────────────────────
 
-  const TA = clsx('border-b pb-3', isDark ? 'border-white/[0.05]' : 'border-black/[0.04]')
+  const TA = clsx('border-b pb-3', isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')
 
   return (
     <div className="h-full overflow-y-auto space-y-5 pr-1">
+
+      {/* ── Reference-style result card (real fields only) ── */}
+      {primary && (
+        <div className={clsx('rounded-2xl border p-4', isDark ? 'bg-[#121924] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className={clsx('text-base font-semibold leading-tight truncate', isDark ? 'text-white' : 'text-slate-900')}>
+                {cur.differential_diagnosis[0] ?? 'Primary finding'}
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1">{subtitle}</p>
+            </div>
+            <LiRadsScore
+              category={primary.lirads_category}
+              score={primary.score}
+              scoreSystem={primary.score_system}
+              size="sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            {([
+              ['Lesion size', sizeStr],
+              ['Location', primary.location_segment ?? '—'],
+              ['Enhancement', enhStr],
+              ['Washout', washStr],
+            ] as [string, string][]).map(([k, v]) => (
+              <div key={k} className={clsx('rounded-xl px-3 py-2', isDark ? 'bg-[#0d1219]' : 'bg-slate-50')}>
+                <div className="text-[9px] uppercase tracking-wide text-slate-400">{k}</div>
+                <div className={clsx('text-sm font-semibold mt-0.5 truncate', isDark ? 'text-slate-100' : 'text-slate-800')}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Header: modality badge + edit toggle + copy ── */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <span className={clsx('text-[10px] font-mono px-2 py-0.5 rounded-md font-semibold border',
-            isDark ? 'bg-slate-700/60 border-white/[0.08] text-slate-300' : 'bg-white/60 border-black/[0.06] text-slate-600')}>
+            isDark ? 'bg-[#121924] border-[#1f2835] text-slate-300' : 'bg-white border-[#e2e8ee] text-slate-600')}>
             {cur.modality}
           </span>
           {cur.rag_context_used && (
@@ -145,8 +190,8 @@ export default function AIReportPanel({
           <button onClick={handleCopy}
             className={clsx('text-[10px] px-2 py-0.5 rounded-md border font-mono shrink-0 transition-colors',
               isDark
-                ? 'text-slate-400 hover:text-slate-200 border-white/[0.08]'
-                : 'text-slate-500 hover:text-slate-700 border-black/[0.08] hover:border-slate-400')}>
+                ? 'text-slate-400 hover:text-slate-200 border-[#1f2835]'
+                : 'text-slate-500 hover:text-slate-700 border-[#e2e8ee] hover:border-slate-400')}>
             {copied ? t('ai.copied') : t('ai.copy')}
           </button>
           {/* Edit / Save / Cancel */}
@@ -154,20 +199,20 @@ export default function AIReportPanel({
             editMode ? (
               <div className="flex items-center gap-1">
                 <button onClick={saveEdit}
-                  className="text-[10px] px-2.5 py-0.5 rounded-md bg-accent hover:bg-violet-600 text-white font-semibold transition-colors">
+                  className="text-[10px] px-2.5 py-0.5 rounded-md bg-accent hover:bg-teal-700 text-white font-semibold transition-colors">
                   Save
                 </button>
                 <button onClick={cancelEdit}
                   className={clsx('text-[10px] px-2 py-0.5 rounded-md border font-mono transition-colors',
-                    isDark ? 'border-white/[0.08] text-slate-400 hover:text-slate-200' : 'border-black/[0.08] text-slate-500 hover:text-slate-800')}>
+                    isDark ? 'border-[#1f2835] text-slate-400 hover:text-slate-200' : 'border-[#e2e8ee] text-slate-500 hover:text-slate-800')}>
                   Cancel
                 </button>
               </div>
             ) : (
               <button onClick={enterEdit}
                 className={clsx('flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-md border font-semibold transition-colors',
-                  isDark ? 'border-white/[0.08] text-slate-300 hover:text-accent hover:border-accent/40'
-                         : 'border-black/[0.08] text-slate-600 hover:text-accent hover:border-accent/30')}>
+                  isDark ? 'border-[#1f2835] text-slate-300 hover:text-accent hover:border-accent/40'
+                         : 'border-[#e2e8ee] text-slate-600 hover:text-accent hover:border-accent/30')}>
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487z" />
                 </svg>
@@ -186,7 +231,7 @@ export default function AIReportPanel({
             <span
               title="LLM that produced this report"
               className={clsx('text-[9px] font-mono px-1.5 py-0.5 rounded border',
-                isDark ? 'bg-white/5 border-white/[0.1] text-slate-400' : 'bg-black/[0.04] border-black/[0.08] text-slate-500')}
+                isDark ? 'bg-[#121924] border-[#1f2835] text-slate-400' : 'bg-slate-100 border-[#e2e8ee] text-slate-500')}
             >
               {report.model}
             </span>
@@ -282,17 +327,17 @@ export default function AIReportPanel({
             </div>
           ) : (
             <div className={clsx('mt-2.5 border rounded-xl overflow-hidden',
-              isDark ? 'bg-slate-800/40 border-white/[0.08]' : 'bg-white/40 border-black/[0.06]')}>
+              isDark ? 'bg-[#121924] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
               {cur.bclc_stage && (
                 <div className={clsx('flex items-center justify-between px-3 py-2 border-b',
-                  isDark ? 'border-white/[0.05]' : 'border-black/[0.04]')}>
+                  isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')}>
                   <span className={clsx('text-xs', isDark ? 'text-slate-400' : 'text-slate-500')}>{t('ai.bclcStage')}</span>
                   <span className="text-sm font-bold text-orange-500 font-mono">{cur.bclc_stage}</span>
                 </div>
               )}
               {cur.staging && !cur.bclc_stage && (
                 <div className={clsx('flex items-start justify-between gap-4 px-3 py-2',
-                  cur.vascular_involvement ? `border-b ${isDark ? 'border-white/[0.05]' : 'border-black/[0.04]'}` : '')}>
+                  cur.vascular_involvement ? `border-b ${isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]'}` : '')}>
                   <span className={clsx('text-xs shrink-0', isDark ? 'text-slate-400' : 'text-slate-500')}>Staging</span>
                   <span className={clsx('text-xs font-mono text-right', isDark ? 'text-slate-200' : 'text-slate-700')}>
                     {cur.staging}
@@ -330,11 +375,11 @@ export default function AIReportPanel({
             {overlays.map(o => (
               <button key={o.key} onClick={() => setOverlayZoom(o.image)}
                 className={clsx('group rounded-xl overflow-hidden border text-left transition-colors',
-                  isDark ? 'border-white/[0.08] hover:border-accent/40' : 'border-black/[0.06] hover:border-accent/30')}>
+                  isDark ? 'border-[#1f2835] hover:border-accent/40' : 'border-[#e2e8ee] hover:border-accent/30')}>
                 <img src={`data:image/png;base64,${o.image}`} alt={o.label}
                   className="w-full aspect-square object-cover" />
                 <div className={clsx('px-2 py-1 text-[10px] font-mono truncate',
-                  isDark ? 'bg-slate-800/60 text-slate-300' : 'bg-white/60 text-slate-600')}>
+                  isDark ? 'bg-[#121924] text-slate-300' : 'bg-white text-slate-600')}>
                   {o.label}
                 </div>
               </button>
@@ -345,7 +390,7 @@ export default function AIReportPanel({
 
       {overlayZoom && (
         <div onClick={() => setOverlayZoom(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-8 cursor-zoom-out">
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-8 cursor-zoom-out">
           <img src={`data:image/png;base64,${overlayZoom}`} alt="attention heatmap"
             className="max-w-full max-h-full rounded-xl shadow-2xl" />
         </div>

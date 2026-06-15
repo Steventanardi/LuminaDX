@@ -9,10 +9,10 @@ export default {
         mono: ['ui-monospace', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'Consolas', 'monospace'],
       },
       colors: {
-        surface: '#f0f4ff',
+        surface: '#eef1f4',
         panel:   '#ffffff',
-        border:  '#e4e9f5',
-        accent:  '#7c3aed',
+        border:  '#e2e8ee',
+        accent:  '#0d9488',
       },
     },
   },

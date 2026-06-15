@@ -38,6 +38,11 @@ backend/data/logs/
 # ─── Vector database (large, regenerable via ingest_guidelines.py) ───
 backend/data/vectordb/
 
+# ─── Reference datasets and knowledge base ───
+backend/data/reference/
+backend/data/knowledge_base/
+backend/data/knn_index/
+
 # ─── SQLite databases ───
 *.db
 

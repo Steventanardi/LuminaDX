@@ -31,102 +31,6 @@ _studies: dict[str, DicomStudy] = {}
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 
-# ── Cancer-type auto-detection from DICOM metadata ────────────────────────────
-
-# Keyword → cancer type scoring table (order matters: more specific first)
-_HINTS: list[tuple[str, list[str]]] = [
-    ("breast",      ["breast", "mammo", "mammograph", "mammal", "axill"]),
-    ("liver",       ["liver", "hepat", "hcc", "biliar", "cholang", "splen"]),
-    ("lung",        ["lung", "thorax", "thorac", "pulmon", "chest", "bronch", "trachea", "lobe", "nodule", "pleura"]),
-    ("colorectal",  ["colon", "rectal", "rectum", "sigmoid", "bowel", "colorect", "colonoscop", "ileocec"]),
-    ("skin",        ["skin", "derm", "melanom", "nevus", "keratosis", "dermoscop"]),
-]
-
-# SOP Class UIDs that unambiguously identify mammography
-_MAMMOGRAPHY_SOPS = {
-    "1.2.840.10008.5.1.4.1.1.1.2",    # Digital Mammography X-Ray Image Storage
-    "1.2.840.10008.5.1.4.1.1.1.2.1",  # ... For Processing
-    "1.2.840.10008.5.1.4.1.1.13.1.3", # Breast Tomosynthesis Image Storage
-    "1.2.840.10008.5.1.4.1.1.13.1.1", # Breast Projection X-Ray Image Storage
-}
-
-
-def _score(text: str) -> dict[str, int]:
-    t = text.lower()
-    return {c: sum(1 for kw in kws if kw in t) for c, kws in _HINTS if any(kw in t for kw in kws)}
-
-
-def _detect_cancer_from_dicom(study_dir: Path) -> tuple[str, str, str]:
-    """Scan up to 5 DICOM files and return (cancer_type, confidence, reason)."""
-    scores: dict[str, int] = {}
-    reasons: list[str] = []
-
-    dcm_files = (list(study_dir.glob("*.dcm")) + list(study_dir.glob("*.DCM")))[:5]
-    for p in dcm_files:
-        try:
-            ds = pydicom.dcmread(str(p), stop_before_pixels=True, force=True)
-        except Exception:
-            continue
-
-        # Mammography by modality code (MG)
-        mod = str(getattr(ds, "Modality", "") or "")
-        if mod == "MG":
-            scores["breast"] = scores.get("breast", 0) + 10
-            reasons.append("Modality: MG")
-
-        # Mammography by SOP Class UID
-        sop = str(getattr(ds, "SOPClassUID", "") or "")
-        if sop in _MAMMOGRAPHY_SOPS:
-            scores["breast"] = scores.get("breast", 0) + 8
-            reasons.append("SOPClassUID: Mammography")
-
-        # Tag-based scoring — BodyPartExamined is worth 3×, others 1×
-        for tag, weight in [
-            ("BodyPartExamined", 3),
-            ("StudyDescription",  1),
-            ("SeriesDescription", 1),
-            ("ProtocolName",      1),
-        ]:
-            val = str(getattr(ds, tag, "") or "")
-            if not val:
-                continue
-            for c, s in _score(val).items():
-                scores[c] = scores.get(c, 0) + s * weight
-            reasons.append(f"{tag}: {val[:40]}")
-
-    if not scores:
-        return "liver", "low", "No distinguishing DICOM metadata found"
-
-    best = max(scores, key=lambda k: scores[k])
-    best_s = scores[best]
-    total = sum(scores.values())
-    ratio = best_s / total if total else 0
-
-    if best_s >= 6 or ratio >= 0.75:
-        confidence = "high"
-    elif best_s >= 3 or ratio >= 0.5:
-        confidence = "medium"
-    else:
-        confidence = "low"
-
-    # Deduplicate reason strings, keep first occurrence order
-    seen: set[str] = set()
-    uniq = [r for r in reasons if not (r in seen or seen.add(r))]  # type: ignore[func-returns-value]
-    reason = "; ".join(uniq)[:120]
-    return best, confidence, reason
-
-
-def _detect_cancer_from_nifti(filenames: list[str]) -> tuple[str, str, str]:
-    """Heuristic based on NIfTI filenames (e.g. 'liver_ct.nii.gz')."""
-    combined = " ".join(filenames).lower()
-    scores = _score(combined)
-    if not scores:
-        return "liver", "low", "No hints in NIfTI filename"
-    best = max(scores, key=lambda k: scores[k])
-    conf = "medium" if scores[best] >= 2 else "low"
-    return best, conf, f"Filename: {', '.join(filenames[:2])}"
-
-
 def _detect_type(filenames: list[str]) -> str:
     """Return 'nifti', 'image', or 'dicom' based on file extensions."""
     lower = [n.lower() for n in filenames if n]
@@ -180,23 +84,17 @@ async def _handle_nifti(
 
     series = [SeriesInfo(series_uid="nifti-0", description="NIfTI Volume", phase="arterial", num_slices=1)]
 
-    detected_type, det_conf, det_reason = _detect_cancer_from_nifti(saved)
-    effective_cancer = cancer_type if cancer_type != "liver" else detected_type
-
-    meta = {"type": "nifti", "modality": modality, "nifti_files": saved, "cancer_type": effective_cancer}
+    meta = {"type": "nifti", "modality": modality, "nifti_files": saved, "cancer_type": cancer_type}
     (study_dir / "_meta.json").write_text(json.dumps(meta))
 
     study = DicomStudy(id=study_id, modality=Modality(modality), num_files=len(saved), series=series,
-                       cancer_type=effective_cancer, owner_user_id=owner_user_id, owner_department=_dept)
+                       cancer_type=cancer_type, owner_user_id=owner_user_id, owner_department=_dept)
     _studies[study_id] = study
-    logger.info(f"NIfTI study {study_id}: {len(saved)} file(s), cancer_type={effective_cancer} (detected={det_conf})")
+    logger.info(f"NIfTI study {study_id}: {len(saved)} file(s), cancer_type={cancer_type}")
     log_upload(study_id, "nifti", len(saved), modality)
     return UploadResponse(
         study_id=study_id, num_files=len(saved), modality=modality, series=series,
         message=f"Uploaded {len(saved)} NIfTI file(s) — full segmentation pipeline",
-        suggested_cancer_type=detected_type,
-        detection_confidence=det_conf,
-        detection_reason=det_reason,
     )
 
 
@@ -223,21 +121,10 @@ async def _handle_images(
                        cancer_type=cancer_type, owner_user_id=owner_user_id, owner_department=_dept)
     _studies[study_id] = study
     logger.info(f"Image study {study_id}: {len(saved)} image(s), cancer_type={cancer_type}")
-    detected_type, det_conf, det_reason = _detect_cancer_from_nifti(saved)  # same filename logic
-    effective_cancer = cancer_type if cancer_type != "liver" else detected_type
-    if effective_cancer != cancer_type:
-        # update meta with detected type
-        meta["cancer_type"] = effective_cancer
-        (study_dir / "_meta.json").write_text(json.dumps(meta))
-        study.cancer_type = effective_cancer
-
     log_upload(study_id, "image", len(saved), modality)
     return UploadResponse(
         study_id=study_id, num_files=len(saved), modality=modality, series=series,
         message=f"Uploaded {len(saved)} image(s) — LLM-only analysis (~30 s)",
-        suggested_cancer_type=detected_type if det_conf != "low" else None,
-        detection_confidence=det_conf if det_conf != "low" else None,
-        detection_reason=det_reason if det_conf != "low" else None,
     )
 
 
@@ -284,24 +171,17 @@ async def _handle_dicom(
     modality = modality_enum.value if modality_enum else None
     series: List[SeriesInfo] = info["series"]
 
-    # Auto-detect cancer type from DICOM metadata when caller passes the default
-    detected_type, det_conf, det_reason = _detect_cancer_from_dicom(study_dir)
-    effective_cancer = cancer_type if cancer_type != "liver" else detected_type
-
-    meta = {"type": "dicom", "modality": modality, "cancer_type": effective_cancer}
+    meta = {"type": "dicom", "modality": modality, "cancer_type": cancer_type}
     (study_dir / "_meta.json").write_text(json.dumps(meta))
 
     study = DicomStudy(id=study_id, modality=modality_enum, num_files=saved, series=series,
-                       cancer_type=effective_cancer, owner_user_id=owner_user_id, owner_department=_dept)
+                       cancer_type=cancer_type, owner_user_id=owner_user_id, owner_department=_dept)
     _studies[study_id] = study
-    logger.info(f"DICOM study {study_id}: {saved} files, modality={modality}, cancer_type={effective_cancer} (detected={det_conf})")
+    logger.info(f"DICOM study {study_id}: {saved} files, modality={modality}, cancer_type={cancer_type}")
     log_upload(study_id, "dicom", saved, modality)
     return UploadResponse(
         study_id=study_id, num_files=saved, modality=modality, series=series,
         message=f"Uploaded {saved} DICOM files ({len(series)} series detected)",
-        suggested_cancer_type=detected_type,
-        detection_confidence=det_conf,
-        detection_reason=det_reason,
     )
 
 
@@ -367,31 +247,6 @@ def _auto_window(arr: np.ndarray) -> np.ndarray:
     if hi <= lo:
         hi = lo + 1.0
     return ((np.clip(arr, lo, hi) - lo) / (hi - lo) * 255).astype(np.uint8)
-
-
-@router.get("/detect/{study_id}")
-async def detect_study_cancer(study_id: str, current_user: User = Depends(get_current_user)):
-    """Re-run cancer-type detection on an already-uploaded study."""
-    study_dir = settings.uploads_dir / study_id
-    if not study_dir.exists():
-        raise HTTPException(404, "Study not found")
-
-    s = _studies.get(study_id)
-    if s:
-        assert_view(s.owner_user_id, s.owner_department, current_user)
-
-    meta_path = study_dir / "_meta.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-    upload_type = meta.get("type", "dicom")
-
-    if upload_type == "dicom":
-        ct, conf, reason = _detect_cancer_from_dicom(study_dir)
-    elif upload_type == "nifti":
-        ct, conf, reason = _detect_cancer_from_nifti(meta.get("nifti_files", []))
-    else:
-        ct, conf, reason = _detect_cancer_from_nifti(meta.get("image_files", []))
-
-    return {"suggested_cancer_type": ct, "detection_confidence": conf, "detection_reason": reason}
 
 
 class _UpdateCancerType(BaseModel):

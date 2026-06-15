@@ -51,7 +51,6 @@ export default function App() {
   const [showHistory, setShowHistory]     = useState(false)
   const [showAdmin, setShowAdmin]         = useState(false)
   const [showSettings, setShowSettings]   = useState(false)
-  const [detection, setDetection]         = useState<{ type: string; confidence: string; reason: string } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [leftOpen, setLeftOpen]           = useState(true)
   const [rightOpen, setRightOpen]         = useState(true)
@@ -112,18 +111,7 @@ export default function App() {
   const handleUploaded = (res: UploadResponse) => {
     setUpload(res)
     setPreviewSlices([])
-    setDetection(null)
     dicomApi.preview(res.study_id, res.num_files).then(r => setPreviewSlices(r.slices)).catch(() => null)
-    // Apply auto-detected cancer type if confidence is high or medium
-    if (res.suggested_cancer_type && res.detection_confidence && res.detection_confidence !== 'low') {
-      const detected = res.suggested_cancer_type as CancerType
-      setCancerType(detected)
-      setDetection({
-        type: detected,
-        confidence: res.detection_confidence,
-        reason: res.detection_reason ?? '',
-      })
-    }
   }
   const handleCancerTypeChange = useCallback(async (ct: CancerType) => {
     setCancerType(ct)
@@ -132,7 +120,7 @@ export default function App() {
     }
   }, [upload])
   const handleAnalyse   = useCallback(async () => { if (upload) await start(upload.study_id, ctx, selectedModel ?? undefined, selectedFeatures) }, [upload, ctx, selectedModel, selectedFeatures, start])
-  const handleReset     = () => { setUpload(null); setCtx(DEFAULT_CTX); setPreviewSlices([]); setShowRaw(false); setDetection(null); reset() }
+  const handleReset     = () => { setUpload(null); setCtx(DEFAULT_CTX); setPreviewSlices([]); setShowRaw(false); reset() }
   const handleLogout    = async () => { await logout() }
   const handleIngestRag = async () => {
     setRagLoading(true); setShowSettings(false)
@@ -177,18 +165,18 @@ export default function App() {
     document.addEventListener('mouseup', onUp)
   }, [rightWidth])
 
-  const GLASS = clsx('backdrop-blur-xl border shadow-lg', isDark
-    ? 'bg-slate-900/80 border-white/[0.07] shadow-black/50'
-    : 'bg-white/65 border-white/80 shadow-violet-100/40')
+  const GLASS = clsx('border', isDark
+    ? 'bg-[#10151d] border-[#1f2835] shadow-sm shadow-black/30'
+    : 'bg-white border-[#e2e8ee] shadow-sm shadow-slate-200/50')
 
 const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-center transition-colors shadow-sm', isDark
-    ? 'bg-white/5 hover:bg-white/10 border-white/[0.08] text-slate-400 hover:text-accent'
-    : 'bg-white/60 hover:bg-white/90 border-white/80 text-slate-500 hover:text-accent')
+    ? 'bg-[#121924] hover:bg-[#1a2230] border-[#1f2835] text-slate-400 hover:text-accent'
+    : 'bg-white hover:bg-slate-100 border-[#e2e8ee] text-slate-500 hover:text-accent')
 
   // Auth gate — must be after all hook calls
   if (authLoading) {
     return (
-      <div className={clsx('h-screen flex items-center justify-center', isDark ? 'bg-slate-950' : 'bg-surface')}>
+      <div className={clsx('h-screen flex items-center justify-center', isDark ? 'bg-[#0a0e14]' : 'bg-surface')}>
         <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -196,23 +184,13 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
   if (!user) return <LoginScreen isDark={isDark} />
 
   return (
-    <div className={clsx('h-screen flex flex-col overflow-hidden font-sans select-none', isDark ? 'dark bg-slate-950 text-slate-200' : 'bg-surface text-slate-800', isResizing && 'cursor-col-resize')}>
+    <div className={clsx('h-screen flex flex-col overflow-hidden font-sans select-none', isDark ? 'dark bg-[#0a0e14] text-slate-200' : 'bg-surface text-slate-800', isResizing && 'cursor-col-resize')}>
 
-      {/* ── Animated gradient blobs ── */}
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-[700px] h-[700px] rounded-full blur-[130px] blob-1"
-          style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.38) 0%, transparent 65%)' }} />
-        <div className="absolute -bottom-40 -left-40 w-[600px] h-[600px] rounded-full blur-[110px] blob-2"
-          style={{ background: 'radial-gradient(circle, rgba(125,211,252,0.32) 0%, transparent 65%)' }} />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full blur-[90px] blob-3"
-          style={{ background: 'radial-gradient(circle, rgba(110,231,183,0.18) 0%, transparent 65%)' }} />
-        <div className="absolute top-1/4 left-1/4 w-[300px] h-[300px] rounded-full blur-[80px] blob-4"
-          style={{ background: 'radial-gradient(circle, rgba(249,168,212,0.18) 0%, transparent 65%)' }} />
-      </div>
+      {/* Calm flat background — animated blobs removed for clinical reading */}
 
       {/* ── Glass header ── */}
-      <header className={clsx('relative z-40 backdrop-blur-xl border-b flex items-center justify-between px-5 py-3 shrink-0',
-        isDark ? 'bg-slate-900/80 border-white/[0.06]' : 'bg-white/60 border-white/80')}>
+      <header className={clsx('relative z-40 border-b flex items-center justify-between px-5 py-3 shrink-0',
+        isDark ? 'bg-[#0d1219] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
         {/* Logo */}
         <div className="flex items-center gap-3 shrink-0">
           <div className={clsx('w-8 h-8 rounded-xl border flex items-center justify-center shrink-0', isDark ? 'bg-accent/15 border-accent/25' : 'bg-accent/10 border-accent/20')}>
@@ -223,18 +201,26 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
           <div>
             <h1 className={clsx('text-sm font-semibold leading-tight flex items-center gap-1.5', isDark ? 'text-white' : 'text-slate-900')}>
               LuminaDx
+              <span className="text-[10px] font-normal text-slate-500 ml-0.5">v2</span>
               {cancerType !== 'liver' && (
                 <span className="text-[10px] font-medium text-accent">{CANCER_TYPE_META[cancerType]?.icon} {CANCER_TYPE_META[cancerType]?.label}</span>
               )}
             </h1>
-            <p className="text-[10px] text-slate-400 leading-tight hidden sm:block">{t('header.subtitle')}</p>
+            <p className="text-[10px] text-slate-400 leading-tight hidden sm:block">{t('header.subtitle', { system: cancerType === 'liver' ? 'LI-RADS v2024' : (CANCER_TYPE_META[cancerType]?.scoreSystem ?? 'Multi-RADS') })}</p>
           </div>
+          {uploaded && upload && (
+            <div className={clsx('hidden xl:flex items-center gap-2.5 text-[11px] text-slate-400 pl-3 ml-1 border-l', isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')}>
+              <span>Case <b className={clsx('font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>#{upload.study_id.slice(0, 8)}</b></span>
+              {upload.modality && <span>· <b className={clsx('font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{upload.modality}</b></span>}
+              {(report?.model || selectedModel) && <span>· <b className={clsx('font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{report?.model || selectedModel}</b></span>}
+            </div>
+          )}
         </div>
 
         {/* LI-RADS badge — shows when analysis is done */}
         {isDone && report?.lesions?.[0] && (
-          <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm hidden md:flex',
-            isDark ? 'bg-slate-800/60 border-white/[0.08]' : 'bg-white/60 border-black/[0.06]')}>
+          <div className={clsx('flex items-center gap-2 px-3 py-1.5 rounded-full border hidden md:flex',
+            isDark ? 'bg-[#121924] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
             <span className="text-[10px] text-slate-400">{t('header.topFinding')}</span>
             <LiRadsScore
               category={report.lesions[0].lirads_category}
@@ -279,8 +265,8 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
             aria-label={t('lang.title')}
             className={clsx('px-2.5 h-8 rounded-lg border text-xs font-semibold transition-colors shadow-sm shrink-0',
               isDark
-                ? 'bg-white/5 hover:bg-white/10 border-white/[0.08] text-slate-300 hover:text-accent'
-                : 'bg-white/60 hover:bg-white/90 border-white/80 text-slate-600 hover:text-accent')}
+                ? 'bg-[#121924] hover:bg-[#1a2230] border-[#1f2835] text-slate-300 hover:text-accent'
+                : 'bg-white hover:bg-slate-100 border-[#e2e8ee] text-slate-600 hover:text-accent')}
           >
             {lang === 'en' ? 'EN' : '繁中'}
           </button>
@@ -324,9 +310,9 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
               </svg>
             </button>
             {showSettings && (
-              <div className={clsx('absolute right-0 top-10 backdrop-blur-xl border rounded-xl shadow-2xl z-50 p-1.5 min-w-[180px] space-y-0.5',
-                isDark ? 'bg-slate-900/95 border-white/10' : 'bg-white/90 border-white/90')}>
-                <button onClick={handleIngestRag} disabled={ragLoading} className={clsx('w-full text-left px-3 py-2 rounded-lg text-xs transition-colors font-medium flex items-center gap-2 disabled:opacity-50', isDark ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-700 hover:bg-accent/8 hover:text-accent')}>
+              <div className={clsx('absolute right-0 top-10 border rounded-xl shadow-2xl z-50 p-1.5 min-w-[180px] space-y-0.5',
+                isDark ? 'bg-[#10151d] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
+                <button onClick={handleIngestRag} disabled={ragLoading} className={clsx('w-full text-left px-3 py-2 rounded-lg text-xs transition-colors font-medium flex items-center gap-2 disabled:opacity-50', isDark ? 'text-slate-300 hover:bg-[#1a2230] hover:text-white' : 'text-slate-700 hover:bg-accent/8 hover:text-accent')}>
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                   {ragLoading ? t('settings.ingesting') : t('settings.ingest')}
                 </button>
@@ -336,7 +322,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
 
           {/* Logged-in user + logout */}
           {user && (
-            <div className="flex items-center gap-2 shrink-0 pl-1 border-l border-white/[0.08]">
+            <div className="flex items-center gap-2 shrink-0 pl-1 border-l border-[#1f2835]">
               <span className={clsx('text-[10px] font-medium hidden sm:block truncate max-w-[120px]',
                 isDark ? 'text-slate-400' : 'text-slate-500')}>
                 {user.full_name}
@@ -350,7 +336,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
                 <button
                   onClick={() => setShowAdmin(true)}
                   title="User Management"
-                  className={clsx(PANEL_BTN, 'text-violet-400 hover:!text-violet-300')}
+                  className={clsx(PANEL_BTN, 'text-teal-400 hover:!text-teal-300')}
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round"
@@ -373,8 +359,26 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
         </div>
       </header>
 
+      {/* ── Differential diagnosis ribbon (real data, no fabricated confidence) ── */}
+      {report?.differential_diagnosis && report.differential_diagnosis.length > 0 && (
+        <div className={clsx('relative z-30 flex items-center gap-2 px-5 py-2 shrink-0 border-b overflow-x-auto',
+          isDark ? 'bg-[#0d1219] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 shrink-0">{t('ai.differential')}</span>
+          {report.differential_diagnosis.map((d, i) => (
+            <span key={`${d}-${i}`}
+              className={clsx('flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs whitespace-nowrap border shrink-0',
+                i === 0
+                  ? 'border-accent/50 text-accent bg-accent/10'
+                  : isDark ? 'border-[#1f2835] text-slate-400' : 'border-[#e2e8ee] text-slate-500')}>
+              <span className={clsx('w-1.5 h-1.5 rounded-full', i === 0 ? 'bg-accent' : 'bg-slate-500')} />
+              {d}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* ── Disclaimer ── */}
-      <div className={clsx('relative z-30 text-[10px] text-center py-1.5 px-4 shrink-0 font-medium tracking-wide border-b backdrop-blur-sm',
+      <div className={clsx('relative z-30 text-[10px] text-center py-1.5 px-4 shrink-0 font-medium tracking-wide border-b ',
         isDark ? 'bg-amber-950/20 border-amber-900/[0.08] text-amber-400/40' : 'bg-amber-50/70 border-amber-200/50 text-amber-700/80')}>
         {t('disclaimer.top')}
       </div>
@@ -387,10 +391,10 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
           style={{ width: leftOpen ? leftWidth : 40, transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.4,0,0.2,1)' }}
           className={clsx('shrink-0 flex flex-col overflow-hidden rounded-2xl', GLASS)}
         >
-          <div className={clsx('flex items-center shrink-0 border-b px-3 py-2', isDark ? 'border-white/[0.05]' : 'border-black/[0.05]', leftOpen ? 'justify-between' : 'justify-center')}>
+          <div className={clsx('flex items-center shrink-0 border-b px-3 py-2', isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]', leftOpen ? 'justify-between' : 'justify-center')}>
             {leftOpen && <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('workflow.title')}</span>}
             <button onClick={() => setLeftOpen(o => !o)}
-              className={clsx('w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0', isDark ? 'text-slate-500 hover:bg-white/10 hover:text-slate-200' : 'text-slate-400 hover:bg-accent/10 hover:text-accent')}
+              className={clsx('w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0', isDark ? 'text-slate-500 hover:bg-[#1a2230] hover:text-slate-200' : 'text-slate-400 hover:bg-accent/10 hover:text-accent')}
               title={leftOpen ? t('workflow.collapse') : t('workflow.expand')}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 {leftOpen ? <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /> : <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />}
@@ -404,7 +408,6 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
               upload={upload}
               cancerType={cancerType}
               ctx={ctx}
-              detection={detection}
               job={job}
               ragStatus={ragStatus}
               modelCatalog={modelCatalog}
@@ -422,7 +425,6 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
               onCtxChange={patch => setCtx(p => ({ ...p, ...patch }))}
               onModelChange={setSelectedModel}
               onFeaturesChange={setSelectedFeatures}
-              onDetectionDismiss={() => setDetection(null)}
             />
           )}
         </aside>
@@ -431,7 +433,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
         {leftOpen && (
           <div onMouseDown={startLeftResize}
             className="w-3 shrink-0 flex items-center justify-center cursor-col-resize group self-stretch mx-0.5">
-            <div className={clsx('w-px h-12 rounded-full transition-all duration-200 group-hover:w-1 group-hover:h-20', isDark ? 'bg-white/10 group-hover:bg-accent/50' : 'bg-black/[0.07] group-hover:bg-accent/40')} />
+            <div className={clsx('w-px h-12 rounded-full transition-all duration-200 group-hover:w-1 group-hover:h-20', isDark ? 'bg-[#1f2835] group-hover:bg-accent/50' : 'bg-slate-100 group-hover:bg-accent/40')} />
           </div>
         )}
 
@@ -451,7 +453,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
         {rightOpen && (
           <div onMouseDown={startRightResize}
             className="w-3 shrink-0 flex items-center justify-center cursor-col-resize group self-stretch mx-0.5">
-            <div className={clsx('w-px h-12 rounded-full transition-all duration-200 group-hover:w-1 group-hover:h-20', isDark ? 'bg-white/10 group-hover:bg-accent/50' : 'bg-black/[0.07] group-hover:bg-accent/40')} />
+            <div className={clsx('w-px h-12 rounded-full transition-all duration-200 group-hover:w-1 group-hover:h-20', isDark ? 'bg-[#1f2835] group-hover:bg-accent/50' : 'bg-slate-100 group-hover:bg-accent/40')} />
           </div>
         )}
 
@@ -460,12 +462,12 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
           style={{ width: rightOpen ? rightWidth : 40, transition: isResizing ? 'none' : 'width 300ms cubic-bezier(0.4,0,0.2,1)' }}
           className={clsx('shrink-0 flex flex-col overflow-hidden rounded-2xl', GLASS)}
         >
-          <div className={clsx('flex items-center shrink-0 border-b px-3 py-2', isDark ? 'border-white/[0.05]' : 'border-black/[0.05]', rightOpen ? 'justify-between' : 'justify-center')}>
+          <div className={clsx('flex items-center shrink-0 border-b px-3 py-2', isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]', rightOpen ? 'justify-between' : 'justify-center')}>
             {rightOpen && (
               <div className="flex items-center gap-2">
                 <h2 className={clsx('text-sm font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>{t('report.title')}</h2>
                 {report && (
-                  <div className={clsx('flex rounded-lg overflow-hidden border text-[10px] font-mono', isDark ? 'border-white/[0.08]' : 'border-black/[0.07]')}>
+                  <div className={clsx('flex rounded-lg overflow-hidden border text-[10px] font-mono', isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')}>
                     <button onClick={() => setShowRaw(false)} className={clsx('px-2.5 py-1 transition-colors', !showRaw ? 'bg-accent text-white' : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')}>{t('report.structured')}</button>
                     <button onClick={() => setShowRaw(true)}  className={clsx('px-2.5 py-1 transition-colors', showRaw  ? 'bg-accent text-white' : isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700')}>{t('report.raw')}</button>
                   </div>
@@ -473,7 +475,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
               </div>
             )}
             <button onClick={() => setRightOpen(o => !o)}
-              className={clsx('w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0', isDark ? 'text-slate-500 hover:bg-white/10 hover:text-slate-200' : 'text-slate-400 hover:bg-accent/10 hover:text-accent')}
+              className={clsx('w-6 h-6 rounded-lg flex items-center justify-center transition-colors shrink-0', isDark ? 'text-slate-500 hover:bg-[#1a2230] hover:text-slate-200' : 'text-slate-400 hover:bg-accent/10 hover:text-accent')}
               title={rightOpen ? t('right.collapse') : t('right.expand')}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 {rightOpen ? <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /> : <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />}
@@ -497,7 +499,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
               ) : (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center space-y-3 max-w-[180px]">
-                    <div className={clsx('w-12 h-12 rounded-2xl border flex items-center justify-center mx-auto shadow-sm', isDark ? 'bg-white/5 border-white/[0.06]' : 'bg-white/60 border-black/[0.06]')}>
+                    <div className={clsx('w-12 h-12 rounded-2xl border flex items-center justify-center mx-auto shadow-sm', isDark ? 'bg-[#121924] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
                       <svg className={clsx('w-6 h-6', isDark ? 'text-slate-700' : 'text-slate-300')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
                       </svg>
@@ -516,9 +518,9 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
 
       {/* ── Keyboard shortcuts modal ── */}
       {showShortcuts && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 "
           onClick={() => setShowShortcuts(false)}>
-          <div className={clsx('rounded-2xl p-6 w-80 border shadow-2xl backdrop-blur-xl', isDark ? 'bg-slate-900/95 border-white/10' : 'bg-white/92 border-white/80')}
+          <div className={clsx('rounded-2xl p-6 w-80 border shadow-2xl ', isDark ? 'bg-[#10151d] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className={clsx('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-slate-800')}>{t('shortcuts.title')}</h3>
@@ -527,7 +529,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
             <div className="space-y-2.5">
               {APP_SHORTCUTS.map(([key, descKey]) => (
                 <div key={key} className="flex items-center justify-between gap-4">
-                  <kbd className={clsx('text-xs font-mono px-2 py-0.5 rounded-md border', isDark ? 'bg-slate-800 border-white/10 text-accent' : 'bg-slate-100 border-slate-200 text-accent')}>{key}</kbd>
+                  <kbd className={clsx('text-xs font-mono px-2 py-0.5 rounded-md border', isDark ? 'bg-slate-800 border-[#1f2835] text-accent' : 'bg-slate-100 border-slate-200 text-accent')}>{key}</kbd>
                   <span className={clsx('text-xs text-right', isDark ? 'text-slate-400' : 'text-slate-500')}>{t(descKey)}</span>
                 </div>
               ))}

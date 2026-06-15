@@ -18,7 +18,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
 
 // Solid pill colors — role badges need to stand out on any glass surface
 const ROLE_PILL: Record<UserRole, string> = {
-  admin:           'bg-violet-600 text-white',
+  admin:           'bg-teal-600 text-white',
   chief_physician: 'bg-sky-500 text-white',
   radiologist:     'bg-slate-500 text-white',
 }
@@ -26,32 +26,32 @@ const ROLE_PILL: Record<UserRole, string> = {
 // ── Shared style tokens (mirror App.tsx conventions) ─────────────────────────
 
 const glass = (isDark: boolean) => clsx(
-  'backdrop-blur-xl border',
-  isDark ? 'bg-slate-900/80 border-white/[0.07]' : 'bg-white/70 border-white/80',
+  'border',
+  isDark ? 'bg-[#10151d] border-[#1f2835]' : 'bg-white border-[#e2e8ee]',
 )
 
 // Inputs: slightly more opaque than the panel so they're visible as distinct fields
 const INPUT = (isDark: boolean) => clsx(
   'w-full rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-accent/50 transition-colors border',
   isDark
-    ? 'bg-white/[0.08] border-white/[0.12] text-slate-200 placeholder:text-slate-500'
-    : 'bg-white/70 border-black/[0.08] text-slate-800 placeholder:text-slate-400',
+    ? 'bg-[#121924] border-[#1f2835] text-slate-200 placeholder:text-slate-500'
+    : 'bg-white border-[#e2e8ee] text-slate-800 placeholder:text-slate-400',
 )
 
 const INPUT_SM = (isDark: boolean) => clsx(
   'rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-accent/50 transition-colors border',
   isDark
-    ? 'bg-white/[0.08] border-white/[0.12] text-slate-200 placeholder:text-slate-500'
-    : 'bg-white/70 border-black/[0.08] text-slate-800 placeholder:text-slate-400',
+    ? 'bg-[#121924] border-[#1f2835] text-slate-200 placeholder:text-slate-500'
+    : 'bg-white border-[#e2e8ee] text-slate-800 placeholder:text-slate-400',
 )
 
-const DIVIDER = (isDark: boolean) => isDark ? 'border-white/[0.07]' : 'border-black/[0.07]'
+const DIVIDER = (isDark: boolean) => isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]'
 
 const BTN_GHOST = (isDark: boolean) => clsx(
   'rounded-lg border flex items-center justify-center transition-colors',
   isDark
-    ? 'bg-white/5 hover:bg-white/10 border-white/[0.08] text-slate-300 hover:text-white'
-    : 'bg-white/60 hover:bg-white/90 border-white/80 text-slate-600 hover:text-slate-900',
+    ? 'bg-[#121924] hover:bg-[#1a2230] border-[#1f2835] text-slate-300 hover:text-white'
+    : 'bg-white hover:bg-slate-100 border-[#e2e8ee] text-slate-600 hover:text-slate-900',
 )
 
 // ── Create / Edit modal ───────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ function UserModal({
     isDark ? 'text-slate-400' : 'text-slate-500')
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 "
       onClick={onClose}>
       <div className={clsx(glass(isDark), 'w-full max-w-md mx-4 rounded-2xl p-6 space-y-4 shadow-2xl')}
         onClick={e => e.stopPropagation()}>
@@ -156,14 +156,14 @@ function UserModal({
 
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={loading}
-              className="flex-1 py-2 rounded-xl bg-accent hover:bg-violet-600 active:bg-violet-700 text-white text-xs font-semibold transition-colors disabled:opacity-40 shadow-sm shadow-accent/20">
+              className="flex-1 py-2 rounded-xl bg-accent hover:bg-teal-700 active:bg-teal-800 text-white text-xs font-semibold transition-colors disabled:opacity-40 shadow-sm shadow-accent/20">
               {loading ? 'Saving…' : mode === 'create' ? 'Create Account' : 'Save Changes'}
             </button>
             <button type="button" onClick={onClose}
               className={clsx('flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors',
                 isDark
-                  ? 'bg-white/5 border-white/[0.08] text-slate-300 hover:bg-white/10 hover:text-slate-100'
-                  : 'bg-white/60 border-white/80 text-slate-600 hover:bg-white/90 hover:text-slate-900')}>
+                  ? 'bg-[#121924] border-[#1f2835] text-slate-300 hover:bg-[#1a2230] hover:text-slate-100'
+                  : 'bg-white border-[#e2e8ee] text-slate-600 hover:bg-slate-100 hover:text-slate-900')}>
               Cancel
             </button>
           </div>
@@ -224,11 +224,11 @@ export default function AdminDashboard({ open, onClose, isDark, currentUser }: P
 
   const D = DIVIDER(isDark)
   // Section tint — slightly lighter than the main glass panel
-  const SECTION = isDark ? 'bg-white/[0.04]' : 'bg-black/[0.025]'
+  const SECTION = isDark ? 'bg-[#121924]' : 'bg-slate-100'
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/30 backdrop-blur-sm"
+      <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/30 "
         onClick={onClose}>
 
         <div className={clsx(glass(isDark), 'w-full max-w-3xl h-full flex flex-col shadow-2xl overflow-hidden')}
@@ -246,7 +246,7 @@ export default function AdminDashboard({ open, onClose, isDark, currentUser }: P
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setShowCreate(true)}
-                className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-accent hover:bg-violet-600 text-white transition-colors shadow-sm">
+                className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-semibold bg-accent hover:bg-teal-700 text-white transition-colors shadow-sm">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
@@ -265,7 +265,7 @@ export default function AdminDashboard({ open, onClose, isDark, currentUser }: P
             {[
               { label: 'Total',        value: stats.total,        accent: isDark ? 'text-slate-100' : 'text-slate-900' },
               { label: 'Active',       value: stats.active,       accent: 'text-emerald-400' },
-              { label: 'Admins',       value: stats.admins,       accent: 'text-violet-400' },
+              { label: 'Admins',       value: stats.admins,       accent: 'text-teal-400' },
               { label: 'Chiefs',       value: stats.chiefs,       accent: 'text-sky-400' },
               { label: 'Radiologists', value: stats.radiologists, accent: isDark ? 'text-slate-300' : 'text-slate-600' },
             ].map((s, i, arr) => (
@@ -333,7 +333,7 @@ export default function AdminDashboard({ open, onClose, isDark, currentUser }: P
                     <tr key={u.id}
                       className={clsx(
                         'border-b transition-colors',
-                        isDark ? `border-white/[0.04] hover:bg-white/[0.04]` : `border-black/[0.05] hover:bg-black/[0.02]`,
+                        isDark ? `border-[#1f2835] hover:bg-[#121924]` : `border-[#e2e8ee] hover:bg-slate-100`,
                         !u.is_active && 'opacity-50',
                       )}>
 
@@ -384,8 +384,8 @@ export default function AdminDashboard({ open, onClose, isDark, currentUser }: P
                             className={clsx(
                               'px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-colors',
                               isDark
-                                ? 'bg-white/5 border-white/[0.10] text-slate-300 hover:bg-white/10 hover:text-slate-100'
-                                : 'bg-white/60 border-black/[0.08] text-slate-600 hover:bg-white/90 hover:text-slate-900',
+                                ? 'bg-[#121924] border-[#1f2835] text-slate-300 hover:bg-[#1a2230] hover:text-slate-100'
+                                : 'bg-white border-[#e2e8ee] text-slate-600 hover:bg-slate-100 hover:text-slate-900',
                             )}>
                             Edit
                           </button>
