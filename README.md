@@ -22,7 +22,7 @@
 
 <br/>
 
-<img src="Pictures/UIResult.png" alt="LuminaDx — Full diagnostic workstation" width="95%"/>
+<img src="Pictures/V2/ResultSkinCancer.png" alt="LuminaDx — Full diagnostic workstation" width="95%"/>
 
 <br/>
 
@@ -75,7 +75,7 @@ For Windows users, an automated setup script is provided. It sets up the Python 
 1. Open PowerShell. If execution policies restrict running scripts, run it as Administrator or bypass the policy: `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
 2. Run the setup script from the project root:
    ```powershell
-   .\scripts\setup.ps1
+   .\scripts\shared\setup.ps1
    ```
 
 *Note: The script attempts to install PyTorch with CUDA 12.1 support and pull standard Ollama models.*
@@ -201,13 +201,13 @@ LuminaDx supports several public imaging datasets (ISIC, TCIA, etc.) for testing
 
 <div align="center">
 
-| Upload & Preview | AI Analysis in Progress |
+| Analysed Lesion View | Structured AI Report (Part 1) |
 |:---:|:---:|
-| <img src="Pictures/UIUploadFIleBeforeAnalysis.png" width="100%"/> | <img src="Pictures/UIWhileRunAnalysis(GPUProgress(LLM)).png" width="100%"/> |
+| <img src="Pictures/V2/Analayzed.png" width="100%"/> | <img src="Pictures/V2/AIReport1.png" width="100%"/> |
 
-| Segmentation Overlay | Full Report with Radiomics |
+| Quantitative Radiomics | Model Attention & Recommendations |
 |:---:|:---:|
-| <img src="Pictures/ResultWIthOverlayON.png" width="100%"/> | <img src="Pictures/RadiomicFeatures.png" width="100%"/> |
+| <img src="Pictures/V2/AIReport2.png" width="100%"/> | <img src="Pictures/V2/AIReport3.png" width="100%"/> |
 
 </div>
 
@@ -251,7 +251,7 @@ Each cancer module implements a standardised `DiagnosisModule` interface with it
 | 🫀 **Liver (HCC)** | LI-RADS v2024 + BCLC | CT / MRI | APHE, washout, capsule assessment; TotalSegmentator liver + lesion masks |
 | 🫁 **Lung** | Lung-RADS v2022 | CT | Nodule classification, ground-glass vs solid, calcification patterns |
 | 🎀 **Breast** | BI-RADS 5th Ed. | Mammography / MRI | Mass shape, margin analysis, density assessment |
-| 🩹 **Skin** | ABCDE + Clark Level | Dermoscopy | Asymmetry, border, colour, diameter, evolution scoring |
+| 🩹 **Skin** | ABCDE + 7-point + Stolz TDS | Dermoscopy | Asymmetry/border/colour/diameter + evolution; hardened lesion segmentation (vignette/ruler/low-contrast/multi-lesion aware); trained HAM10000 ResNet50 (7-class, TTA) + KNN; multi-image |
 | 🔴 **Colorectal** | C-RADS / TNM | CT Colonography | Polyp classification, staging, extramural vascular invasion |
 
 ---
@@ -396,18 +396,20 @@ Toggle with the **EN / 繁中** button in the header.
 
 ## 🧪 Validation & Testing
 
+Scripts are organised per cancer under `scripts/` (run from the repo root) and
+`backend/scripts/` (run from `backend/`). Each folder has its own README.
+
 ```bash
-# Generate synthetic DICOM test data
-python scripts/generate_test_dicom.py
+# Liver: batch validation across the HCC-TACE-Seg dataset (backend must be running)
+python scripts/liver/batch_validate.py
+python scripts/liver/summarize_results.py
 
-# Run batch validation across datasets
-python scripts/batch_validate.py
+# Verify DICOM de-identification compliance (any CT/MRI dir)
+python scripts/shared/verify_deidentification.py <dicom_dir>
 
-# Verify DICOM de-identification compliance
-python scripts/verify_deidentification.py
-
-# Summarise validation results
-python scripts/summarize_results.py
+# Skin: train the HAM10000 classifier, then evaluate it
+python scripts/skin/train_skin_classifier.py --epochs 16 --patience 5
+cd backend && python scripts/skin/eval_skin.py --ham-split --no-knn --tta --sweep
 ```
 
 ---
