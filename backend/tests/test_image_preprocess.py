@@ -41,6 +41,55 @@ def test_remove_hair_preserves_shape():
     assert out.shape == img.shape
 
 
+def _vignette_lesion_image(size: int = 240) -> np.ndarray:
+    """Central lesion on light skin, surrounded by a black dermoscope vignette ring."""
+    img = np.zeros((size, size, 3), dtype=np.uint8)  # black corners/ring
+    cv2.circle(img, (size // 2, size // 2), size // 2 - 8, (200, 200, 200), thickness=-1)
+    cv2.circle(img, (size // 2, size // 2), 45, (60, 40, 40), thickness=-1)  # lesion
+    return img
+
+
+def _two_lesion_image(size: int = 240) -> np.ndarray:
+    img = np.full((size, size, 3), 200, dtype=np.uint8)
+    cv2.circle(img, (75, 120), 38, (60, 40, 40), thickness=-1)
+    cv2.circle(img, (165, 120), 38, (60, 40, 40), thickness=-1)
+    return img
+
+
+def test_segment_lesion_ignores_vignette_ring():
+    """The black dermoscope border must not be mistaken for the lesion."""
+    img = _vignette_lesion_image()
+    seg = ip._segment_lesion(img)
+    assert seg is not None
+    mask, info = seg
+    frac = float(np.count_nonzero(mask)) / mask.size
+    # lesion (~45px radius) is a small central blob, not the whole bright field
+    assert 0.02 < frac < 0.25
+    assert info["border_artifact"] is False
+
+
+def test_segment_lesion_flags_multiple_lesions():
+    seg = ip._segment_lesion(_two_lesion_image())
+    assert seg is not None
+    _, info = seg
+    assert info["multi_lesion"] is True
+
+
+def test_segment_lesion_rejects_flat_image():
+    """A uniform image has no lesion/skin contrast → no confident segmentation."""
+    flat = np.full((200, 200, 3), 180, dtype=np.uint8)
+    assert ip._segment_lesion(flat) is None
+
+
+def test_fov_mask_excludes_dark_border():
+    img = _vignette_lesion_image()
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    fov = ip._fov_mask(gray)
+    # corners are vignette (excluded), centre is inside the FOV
+    assert fov[5, 5] == 0
+    assert fov[120, 120] == 255
+
+
 def test_preprocess_dermoscopy_writes_file_and_returns_features(tmp_path):
     src = tmp_path / "lesion.png"
     cv2.imwrite(str(src), _lesion_image())
@@ -77,6 +126,26 @@ def test_mammographic_density_classifies(tmp_path):
     assert mf.birads_density in {"a", "b", "c", "d"}
     assert 0 <= mf.percent_density <= 100
     assert 0 < mf.breast_area_frac < 1
+
+
+def test_mammographic_density_high_contrast_not_flagged(tmp_path):
+    src = tmp_path / "mammo.png"
+    cv2.imwrite(str(src), _mammo_image())  # bright breast on black background
+    mf = ip.compute_mammographic_density(src)
+    assert mf is not None and mf.segmented
+    assert mf.low_contrast is False
+
+
+def test_mammographic_density_low_contrast_flagged(tmp_path):
+    # breast only slightly brighter than the background → weak separation
+    img = np.full((200, 200, 3), 60, dtype=np.uint8)
+    cv2.circle(img, (100, 100), 70, (80, 80, 80), thickness=-1)
+    src = tmp_path / "lowc.png"
+    cv2.imwrite(str(src), img)
+    mf = ip.compute_mammographic_density(src)
+    if mf is not None and mf.segmented:
+        assert mf.low_contrast is True
+        assert "⚠" in mf.summary()
 
 
 @pytest.mark.parametrize("pct,cat", [(10, "a"), (40, "b"), (60, "c"), (90, "d")])

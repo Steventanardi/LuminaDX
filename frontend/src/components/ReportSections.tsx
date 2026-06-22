@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { useState } from 'react'
 import LiRadsScore from './LiRadsScore'
 import { useI18n } from '../i18n'
-import type { DiagnosticReport, LesionFinding, SignOff, SignOffDecision } from '../types'
+import type { DiagnosticReport, DifferentialItem, LesionFinding, SignOff, SignOffDecision } from '../types'
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -11,10 +11,16 @@ export function deepCopy(r: DiagnosticReport): DiagnosticReport {
     ...r,
     lesions: r.lesions.map(l => ({
       ...l,
+      abcde: l.abcde ? { ...l.abcde } : null,
       major_features: [...l.major_features],
       ancillary_features: [...l.ancillary_features],
     })),
     differential_diagnosis: [...r.differential_diagnosis],
+    differential_assessment: r.differential_assessment?.map(d => ({
+      ...d,
+      supporting_features: [...d.supporting_features],
+      opposing_features:   [...d.opposing_features],
+    })),
     recommendations:        [...r.recommendations],
     guideline_citations:    [...r.guideline_citations],
   }
@@ -88,6 +94,7 @@ export function LesionCard({
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(defaultExpanded)
   const isLiver = cancerType === 'liver'
+  const isSkin = cancerType === 'skin'
 
   const upd = (patch: Partial<LesionFinding>) => onUpdate({ ...l, ...patch })
 
@@ -108,6 +115,12 @@ export function LesionCard({
           </span>
           {l.size_mm != null && <span className="text-[10px] text-slate-400 font-mono">{l.size_mm} mm</span>}
           {l.location_segment && <span className="text-[10px] text-slate-400">{l.location_segment}</span>}
+          {isSkin && l.dermoscopy_score != null && (
+            <span className={clsx('text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded',
+              l.dermoscopy_score >= 3 ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/15 text-emerald-500')}>
+              7-pt {l.dermoscopy_score}/7
+            </span>
+          )}
         </div>
         <div className="flex items-center justify-between w-full md:w-auto gap-2 shrink-0">
           <div className="min-w-0">
@@ -187,6 +200,27 @@ export function LesionCard({
                         : val
                           ? <span className="text-emerald-500 font-semibold text-xs">{t('ai.yes')}</span>
                           : <span className="text-red-400 font-semibold text-xs">{t('ai.no')}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {isSkin && l.abcde && (
+                <div className="space-y-0.5 pt-2">
+                  {([
+                    ['Asymmetry', l.abcde.A_asymmetry],
+                    ['Border',    l.abcde.B_border],
+                    ['Colour',    l.abcde.C_color],
+                    ['Diameter',  l.abcde.D_diameter],
+                    ['Evolution', l.abcde.E_evolution],
+                  ] as const).map(([label, val]) => (
+                    <div key={label} className={clsx('flex items-center justify-between py-1 border-b last:border-0',
+                      isDark ? 'border-[#1f2835]' : 'border-[#e2e8ee]')}>
+                      <span className="text-xs text-slate-400">{label}</span>
+                      {val === null || val === undefined
+                        ? <span className="text-slate-400 font-mono text-xs">&mdash;</span>
+                        : val
+                          ? <span className="text-red-400 font-semibold text-xs">{t('ai.yes')}</span>
+                          : <span className="text-emerald-500 font-semibold text-xs">{t('ai.no')}</span>}
                     </div>
                   ))}
                 </div>
@@ -318,12 +352,249 @@ export function SignOffForm({
   )
 }
 
+// ── Differential assessment (for / against per diagnosis) ──────────────────────
+
+export function DifferentialAssessment({ items, isDark = false }: {
+  items: DifferentialItem[]; isDark?: boolean
+}) {
+  const badgeFor = (l?: string | null) => {
+    switch ((l ?? '').toLowerCase()) {
+      case 'high':     return { label: 'High', cls: 'bg-red-500/15 text-red-400' }
+      case 'moderate': return { label: 'Moderate', cls: 'bg-amber-500/15 text-amber-500' }
+      case 'low':      return { label: 'Low', cls: 'bg-emerald-500/15 text-emerald-500' }
+      default:         return null
+    }
+  }
+  return (
+    <div className="mt-2.5 space-y-2">
+      {items.map((d, i) => {
+        const badge = badgeFor(d.likelihood)
+        return (
+          <div key={`${d.diagnosis}-${i}`} className={clsx('border rounded-xl px-3 py-2.5',
+            isDark ? 'bg-[#121924] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-accent font-mono text-xs font-bold">{i + 1}.</span>
+              <span className={clsx('text-xs font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>
+                {d.diagnosis}
+              </span>
+              {badge && (
+                <span className={clsx('text-[10px] font-semibold px-1.5 py-0.5 rounded', badge.cls)}>
+                  {badge.label}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 mt-1.5">
+              {d.supporting_features.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-500/80 mb-0.5">Supports</p>
+                  <ul className="space-y-0.5">
+                    {d.supporting_features.map((f, j) => (
+                      <li key={j} className={clsx('text-xs flex gap-1.5', isDark ? 'text-slate-300' : 'text-slate-600')}>
+                        <span className="text-emerald-500 mt-0.5 shrink-0 font-bold">+</span>
+                        <span className="min-w-0 break-words">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {d.opposing_features.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-red-400/80 mb-0.5">Against</p>
+                  <ul className="space-y-0.5">
+                    {d.opposing_features.map((f, j) => (
+                      <li key={j} className={clsx('text-xs flex gap-1.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
+                        <span className="text-red-400 mt-0.5 shrink-0 font-bold">−</span>
+                        <span className="min-w-0 break-words">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export function EditableDifferential({ items, onChange, isDark = false }: {
+  items: DifferentialItem[]; onChange: (items: DifferentialItem[]) => void; isDark?: boolean
+}) {
+  const update = (idx: number, patch: Partial<DifferentialItem>) =>
+    onChange(items.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+  const remove = (idx: number) => onChange(items.filter((_, i) => i !== idx))
+  const add = () => onChange([...items,
+    { diagnosis: '', likelihood: 'moderate', supporting_features: [], opposing_features: [] }])
+
+  const SELECT = clsx('rounded-lg px-2 py-1.5 text-xs border focus:outline-none focus:border-accent/60 transition-colors',
+    isDark ? 'bg-[#121924] border-[#1f2835] text-slate-200' : 'bg-white border-[#e2e8ee] text-slate-800')
+
+  return (
+    <div className="mt-2 space-y-2.5">
+      {items.map((d, i) => (
+        <div key={i} className={clsx('border rounded-xl p-2.5 space-y-2',
+          isDark ? 'border-[#1f2835] bg-[#121924]' : 'border-[#e2e8ee] bg-white')}>
+          <div className="flex items-center gap-2">
+            <span className="text-accent font-mono text-xs font-bold shrink-0">{i + 1}.</span>
+            <div className="flex-1 min-w-0">
+              <EditInput value={d.diagnosis} isDark={isDark} placeholder="Diagnosis"
+                onChange={v => update(i, { diagnosis: v })} />
+            </div>
+            <select className={SELECT} value={(d.likelihood ?? '').toLowerCase()}
+              onChange={e => update(i, { likelihood: e.target.value || null })}>
+              <option value="">—</option>
+              <option value="high">High</option>
+              <option value="moderate">Moderate</option>
+              <option value="low">Low</option>
+            </select>
+            <button onClick={() => remove(i)} title="Remove diagnosis"
+              className="text-red-400 text-xs px-1.5 py-1 rounded hover:bg-red-500/10 shrink-0">✕</button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <span className="text-[10px] uppercase tracking-wide text-emerald-500/80">Supports (one per line)</span>
+              <EditTextarea rows={2} value={toLines(d.supporting_features)} isDark={isDark}
+                placeholder="Blue-white veil&#10;Asymmetry in 2 axes"
+                onChange={v => update(i, { supporting_features: fromLines(v) })} />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-[10px] uppercase tracking-wide text-red-400/80">Against (one per line)</span>
+              <EditTextarea rows={2} value={toLines(d.opposing_features)} isDark={isDark}
+                placeholder="No regression structures"
+                onChange={v => update(i, { opposing_features: fromLines(v) })} />
+            </label>
+          </div>
+        </div>
+      ))}
+      <button onClick={add}
+        className={clsx('text-xs px-2.5 py-1.5 rounded-lg border border-dashed transition-colors',
+          isDark ? 'border-[#2a3441] text-slate-400 hover:text-slate-200'
+                 : 'border-[#d8e0ea] text-slate-500 hover:text-slate-700')}>
+        + Add diagnosis
+      </button>
+    </div>
+  )
+}
+
 // ── Radiomics section ─────────────────────────────────────────────────────────
+
+// The backend ships radiomics as a flat multi-section text blob (derm ABCD/TDS +
+// CNN + KNN + trained-classifier summaries). We parse it into typed chunks so it
+// can be rendered as friendly metric rows instead of a raw mono dump — and so the
+// PDF exporter can reuse the exact same parse.
+export type RadiomicChunk =
+  // `hint` carries a long parenthetical caveat (e.g. "physical mm not available
+  // — no calibration in image") pulled off the value so it no longer bloats the
+  // metric row; it renders as a muted sub-line instead.
+  | { kind: 'title';   text: string }
+  | { kind: 'metric';  label: string; value: string; tag?: string; hint?: string }
+  | { kind: 'result';  text: string }
+  | { kind: 'warning'; text: string }
+  | { kind: 'note';    text: string }
+  | { kind: 'text';    text: string }
+
+// ── Plain-language glossary ────────────────────────────────────────────────────
+// Short explanations so the panel teaches the reader what each number means rather
+// than dumping raw metrics. Shared with the PDF exporter so both stay in sync.
+const RADIOMIC_METRIC_HELP: [RegExp, string][] = [
+  [/^asymmetry/i,            'How lopsided the lesion is around its centre — a higher % is more asymmetric, a melanoma warning sign.'],
+  [/border irregularity/i,   'How ragged the edge is. 1.0 is a smooth circle; higher means a more notched, irregular border.'],
+  [/(maximum )?diameter/i,   'Longest width of the lesion. Reported in pixels because the photo carries no real-world scale.'],
+  [/colou?r variegation/i,   'Number of distinct colours in the lesion. Three or more colours raises melanoma suspicion.'],
+  [/lesion covers/i,         'How much of the photo the lesion fills — a framing check, not a risk factor.'],
+  [/predicted class/i,       'Label shared by the most visually similar reference images — a look-alike vote, not a trained diagnosis.'],
+  [/nearest neighbou?rs/i,   'The closest reference images and their similarity score (1.00 = identical).'],
+  [/most likely/i,           'The single class the trained network scored highest for this lesion.'],
+  [/malignancy probability/i,'Combined probability across the cancerous classes (melanoma + BCC + AKIEC).'],
+]
+
+const RADIOMIC_SECTION_HELP: [RegExp, string][] = [
+  [/stolz|dermoscopy score|abcd/i, 'A scored dermoscopy rule: Asymmetry, Border, Colour and Differential structures are weighted into one TDS number. Above ~5.45 is melanoma-suspicious.'],
+  [/knn classification|nearest[- ]neighbou?r/i, "Compares this lesion's deep-learning fingerprint to a labelled image library and takes a vote of the closest matches — similarity-based, not a trained diagnosis."],
+  [/ham10000|trained classifier/i, 'A neural network trained on the HAM10000 dermoscopy dataset to sort lesions into 7 diagnostic classes.'],
+  [/class probabilit/i, "The network's confidence spread across all classes (totals 100%)."],
+]
+
+export function radiomicMetricHelp(label: string): string | undefined {
+  return RADIOMIC_METRIC_HELP.find(([re]) => re.test(label))?.[1]
+}
+
+export function radiomicSectionHelp(title: string): string | undefined {
+  return RADIOMIC_SECTION_HELP.find(([re]) => re.test(title))?.[1]
+}
+
+// Qualifier words that signal an elevated / reassuring finding → colour the pill.
+const RADIOMIC_ALERT = /(asymmetr|irregular|notched|multi-?colou?r|suspicious|melanoma|elevated|dense|atypical|high)/i
+const RADIOMIC_OK    = /(symmetric|smooth|uniform|benign|regular|low|fatty)/i
+
+export function radiomicTagTone(tag: string): 'alert' | 'ok' | 'neutral' {
+  if (RADIOMIC_ALERT.test(tag)) return 'alert'
+  if (RADIOMIC_OK.test(tag)) return 'ok'
+  return 'neutral'
+}
+
+export function parseRadiomics(summary: string): RadiomicChunk[] {
+  const out: RadiomicChunk[] = []
+  const pushMetric = (piece: string) => {
+    // A conclusion line (e.g. "TDS = 8.60 → highly suspicious") can arrive inside a
+    // "•"-bullet group; surface it as a prominent result, not a hidden text line.
+    if (/→|->/.test(piece)) { out.push({ kind: 'result', text: piece.replace(/->/g, '→') }); return }
+    // A trailing-colon fragment (e.g. "Class probabilities:") is a sub-heading.
+    if (piece.endsWith(':')) { out.push({ kind: 'title', text: piece.replace(/:$/, '').trim() }); return }
+    const m = piece.match(/^(.+?):\s*(.+)$/)
+    if (!m) { out.push({ kind: 'text', text: piece }); return }
+    let value = m[2].trim()
+    let tag: string | undefined
+    let hint: string | undefined
+    // Pull a SINGLE trailing "(…)" off the value. A short qualifier becomes a pill;
+    // a longer note (or one with an em-dash) becomes a hint sub-line. The
+    // `!qm[1].includes('(')` guard stops us from grabbing the last item of a list
+    // like "benign (0.89), …, malignant (0.83)" and mistaking it for a qualifier.
+    const qm = value.match(/^(.*?)\s*\(([^()]+)\)\s*$/)
+    if (qm && qm[1].trim() && !qm[1].includes('(')) {
+      const paren = qm[2].trim()
+      value = qm[1].trim()
+      if (paren.length <= 22 && !paren.includes('—')) tag = paren
+      else hint = paren
+    }
+    out.push({ kind: 'metric', label: m[1].trim(), value, tag, hint })
+  }
+
+  for (const raw of summary.split('\n')) {
+    let line = raw.trim()
+    if (!line) continue
+    if (line.includes('⚠')) { out.push({ kind: 'warning', text: line.replace(/[•⚠]/g, '').trim() }); continue }
+    if (/^NOTE\b[:\s]*/i.test(line)) { out.push({ kind: 'note', text: line.replace(/^NOTE\b[:\s]*/i, '').trim() }); continue }
+    // Normalise a leading "- " bullet so it parses like a "•" metric.
+    if (/^[-–]\s+/.test(line)) line = '• ' + line.replace(/^[-–]\s+/, '')
+    if (line.includes('•')) {
+      line.split('•').map(p => p.trim()).filter(Boolean).forEach(pushMetric)
+      continue
+    }
+    if (/→|->/.test(line)) { out.push({ kind: 'result', text: line.replace(/->/g, '→') }); continue }
+    if (/^\(.*\)$/.test(line)) { out.push({ kind: 'note', text: line.replace(/^\(|\)$/g, '').trim() }); continue }
+    if (line.endsWith(':')) { out.push({ kind: 'title', text: line.replace(/:$/, '').trim() }); continue }
+    out.push({ kind: 'text', text: line })
+  }
+  return out
+}
 
 export function RadiomicsSection({ summary, isDark = false }: { summary: string; isDark?: boolean }) {
   const { t } = useI18n()
   const [expanded, setExpanded] = useState(false)
-  const lines = summary.split('\n').filter(Boolean)
+  const chunks = parseRadiomics(summary)
+  const metricCount = chunks.filter(c => c.kind === 'metric').length
+  // Collapsed view keeps the meaningful numbers; notes/legends/prose hide until expanded.
+  const visible = expanded ? chunks : chunks.filter(c => c.kind !== 'note' && c.kind !== 'text')
+
+  const pillTone = (tag: string) => {
+    const tone = radiomicTagTone(tag)
+    return tone === 'alert' ? 'bg-red-500/15 text-red-400'
+      : tone === 'ok'       ? 'bg-emerald-500/15 text-emerald-500'
+      :                       (isDark ? 'bg-slate-700/40 text-slate-300' : 'bg-slate-200/70 text-slate-600')
+  }
+
   return (
     <div className="space-y-2.5">
       <button onClick={() => setExpanded(e => !e)} className="flex items-center justify-between w-full group">
@@ -331,16 +602,93 @@ export function RadiomicsSection({ summary, isDark = false }: { summary: string;
           {t('ai.radiomicFeatures')}
         </h3>
         <span className="text-[10px] text-slate-400 group-hover:text-slate-500 transition-colors font-mono">
-          {expanded ? t('ai.collapse') : t('ai.featuresCount', { n: lines.length })}
+          {expanded ? t('ai.collapse') : t('ai.featuresCount', { n: metricCount })}
         </span>
       </button>
-      <pre className={clsx(
-        'text-xs whitespace-pre-wrap break-words font-mono rounded-xl px-3 py-2 leading-relaxed border',
-        isDark ? 'bg-[#121924] border-[#1f2835] text-slate-400' : 'bg-white border-[#e2e8ee] text-slate-500',
-        !expanded && 'italic',
-      )}>
-        {expanded ? summary : `${lines.slice(0, 3).join('\n')}${lines.length > 3 ? '\n…' : ''}`}
-      </pre>
+
+      <div className={clsx('rounded-xl border divide-y',
+        isDark ? 'bg-[#121924] border-[#1f2835] divide-[#1f2835]' : 'bg-white border-[#e2e8ee] divide-[#eef2f7]')}>
+        {visible.map((c, i) => {
+          if (c.kind === 'title') {
+            const help = radiomicSectionHelp(c.text)
+            return (
+              <div key={i} className="px-3 pt-2.5 pb-1.5">
+                <div className={clsx('text-[10px] font-semibold uppercase tracking-wider',
+                  isDark ? 'text-slate-300' : 'text-slate-500')}>
+                  {c.text}
+                </div>
+                {help && (
+                  <p className={clsx('text-[10px] mt-1 leading-snug', isDark ? 'text-slate-500' : 'text-slate-400')}>
+                    {help}
+                  </p>
+                )}
+              </div>
+            )
+          }
+          if (c.kind === 'metric') {
+            const help = radiomicMetricHelp(c.label)
+            // Long values (the KNN neighbour list, multi-word measurements) stack
+            // under the label instead of fighting it for room — this is what used
+            // to collapse the label to zero width and wrap it one letter per line.
+            const stacked = c.value.length > 30 // px-free heuristic; tuned for the panel width
+            return (
+              <div key={i} className="px-3 py-2">
+                {stacked ? (
+                  <>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={clsx('text-xs', isDark ? 'text-slate-400' : 'text-slate-500')}>{c.label}</span>
+                      {c.tag && <span className={clsx('text-[9px] font-medium px-1.5 py-0.5 rounded', pillTone(c.tag))}>{c.tag}</span>}
+                    </div>
+                    <p className={clsx('text-xs font-semibold font-mono mt-1 break-words leading-relaxed',
+                      isDark ? 'text-slate-100' : 'text-slate-800')}>{c.value}</p>
+                  </>
+                ) : (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className={clsx('text-xs shrink-0', isDark ? 'text-slate-400' : 'text-slate-500')}>{c.label}</span>
+                    <span className="flex items-center gap-1.5 min-w-0 justify-end">
+                      <span className={clsx('text-xs font-semibold font-mono text-right break-words',
+                        isDark ? 'text-slate-100' : 'text-slate-800')}>{c.value}</span>
+                      {c.tag && <span className={clsx('text-[9px] font-medium px-1.5 py-0.5 rounded shrink-0', pillTone(c.tag))}>{c.tag}</span>}
+                    </span>
+                  </div>
+                )}
+                {c.hint && (
+                  <p className={clsx('text-[10px] mt-1 leading-snug', isDark ? 'text-slate-500' : 'text-slate-400')}>{c.hint}</p>
+                )}
+                {help && (
+                  <p className={clsx('text-[10px] mt-1 leading-snug italic', isDark ? 'text-slate-500' : 'text-slate-400')}>{help}</p>
+                )}
+              </div>
+            )
+          }
+          if (c.kind === 'result') {
+            const tone = radiomicTagTone(c.text)
+            return (
+              <div key={i} className={clsx('px-3 py-2 text-xs font-semibold',
+                tone === 'alert' ? 'bg-red-500/10 text-red-400'
+                  : tone === 'ok' ? 'bg-emerald-500/10 text-emerald-500'
+                  : isDark ? 'bg-[#0d1219] text-slate-200' : 'bg-slate-50 text-slate-700')}>
+                {c.text}
+              </div>
+            )
+          }
+          if (c.kind === 'warning') return (
+            <div key={i} className="px-3 py-2 text-xs text-amber-500 font-medium flex gap-1.5">
+              <span className="shrink-0">⚠</span><span className="min-w-0 break-words">{c.text}</span>
+            </div>
+          )
+          if (c.kind === 'note') return (
+            <div key={i} className={clsx('px-3 py-1.5 text-[10px] italic leading-relaxed', isDark ? 'text-slate-500' : 'text-slate-400')}>
+              {c.text}
+            </div>
+          )
+          return (
+            <div key={i} className={clsx('px-3 py-1.5 text-[11px] leading-relaxed', isDark ? 'text-slate-400' : 'text-slate-500')}>
+              {c.text}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

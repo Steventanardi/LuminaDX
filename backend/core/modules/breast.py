@@ -6,7 +6,9 @@ from typing import Optional
 
 from loguru import logger
 
-from core.modules.base import DiagnosisModule
+from core.modules.base import (
+    DIFFERENTIAL_INSTRUCTIONS, DIFFERENTIAL_JSON, DiagnosisModule, coerce_json, parse_differential,
+)
 from models.schemas import DiagnosticReport, LesionFinding
 
 _SYSTEM = """You are an expert breast radiologist specializing in breast cancer detection using mammography, ultrasound, and MRI.
@@ -58,6 +60,8 @@ The image has been preprocessed with CLAHE contrast enhancement to accentuate ma
 
 MODALITY: {modality or 'Mammography / Ultrasound'}
 {pt_txt}{feat_txt}{rag_txt}
+{DIFFERENTIAL_INSTRUCTIONS}
+
 Return ONLY valid JSON with this exact structure:
 {{
   "overall_impression": "1-2 sentence summary",
@@ -73,7 +77,7 @@ Return ONLY valid JSON with this exact structure:
       "reasoning": "Detailed reasoning citing BI-RADS criteria"
     }}
   ],
-  "differential_diagnosis": ["Invasive ductal carcinoma (most likely)", "Fibroadenoma", "Complex cyst"],
+{DIFFERENTIAL_JSON}
   "staging": "Clinical stage II (cT2N0M0 pending nodal assessment) if malignancy confirmed",
   "recommendations": [
     "Ultrasound-guided core needle biopsy",
@@ -84,24 +88,13 @@ Return ONLY valid JSON with this exact structure:
 }}"""
 
     def parse_report(self, raw: str, modality: str, rag_used: bool, radiomics_summary: str) -> DiagnosticReport:
-        json_str = raw.strip()
-        for fence in ("```json", "```"):
-            if json_str.startswith(fence):
-                json_str = json_str[len(fence):]
-                if "```" in json_str:
-                    json_str = json_str[: json_str.index("```")]
-                break
-        try:
-            data = _json.loads(json_str)
-        except Exception:
-            try:
-                s, e = raw.index("{"), raw.rindex("}") + 1
-                data = _json.loads(raw[s:e])
-            except Exception:
-                logger.error("Could not parse breast LLM output as JSON")
-                return DiagnosticReport(study_id="", modality=modality, cancer_type="breast",
-                                        overall_impression="Analysis complete — see raw output.",
-                                        raw_llm_output=raw, rag_context_used=rag_used)
+        data = coerce_json(raw)
+        if data is None:
+            logger.error("Could not parse breast LLM output as JSON")
+            return DiagnosticReport(study_id="", modality=modality, cancer_type="breast",
+                                    overall_impression="Analysis complete — see raw output.",
+                                    raw_llm_output=raw, rag_context_used=rag_used,
+                                    radiomics_summary=radiomics_summary)
 
         lesions = [
             LesionFinding(
@@ -116,11 +109,13 @@ Return ONLY valid JSON with this exact structure:
             )
             for item in data.get("lesions", [])
         ]
+        diff_assessment, differential = parse_differential(data)
         return DiagnosticReport(
             study_id="", modality=modality or "Mammography", cancer_type="breast",
             overall_impression=data.get("overall_impression", ""),
             lesions=lesions,
-            differential_diagnosis=data.get("differential_diagnosis", []),
+            differential_diagnosis=differential,
+            differential_assessment=diff_assessment,
             staging=data.get("staging"),
             recommendations=data.get("recommendations", []),
             guideline_citations=data.get("guideline_citations", []),

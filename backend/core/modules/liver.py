@@ -8,7 +8,10 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from core.modules.base import DiagnosisModule, SegmentationSpec
+from core.modules.base import (
+    DIFFERENTIAL_INSTRUCTIONS, DIFFERENTIAL_JSON, DiagnosisModule, SegmentationSpec,
+    coerce_json, parse_differential,
+)
 from models.schemas import DiagnosticReport, LesionFinding, LiRadsCategory
 
 _LIRADS_MAP = {
@@ -98,6 +101,8 @@ LIVER VOLUME: {seg.liver_volume_ml:.0f} mL
 AUTOMATED SEGMENTATION:
 {lesion_txt}
 {rad_txt}{rag_txt}
+{DIFFERENTIAL_INSTRUCTIONS}
+
 Return ONLY valid JSON with this exact structure:
 {{
   "overall_impression": "1-2 sentence summary",
@@ -116,7 +121,7 @@ Return ONLY valid JSON with this exact structure:
       "reasoning": "Concise rationale citing specific LI-RADS criteria"
     }}
   ],
-  "differential_diagnosis": ["HCC (most likely)", "Dysplastic nodule"],
+{DIFFERENTIAL_JSON}
   "bclc_stage": "BCLC-A",
   "vascular_involvement": "No portal vein tumour thrombus",
   "recommendations": ["Multidisciplinary tumour board review", "AFP / AFP-L3 serology"],
@@ -124,31 +129,17 @@ Return ONLY valid JSON with this exact structure:
 }}"""
 
     def parse_report(self, raw: str, modality: str, rag_used: bool, radiomics_summary: str) -> DiagnosticReport:
-        import json as _json
         from loguru import logger
 
-        json_str = raw.strip()
-        for fence in ("```json", "```"):
-            if json_str.startswith(fence):
-                json_str = json_str[len(fence):]
-                if "```" in json_str:
-                    json_str = json_str[: json_str.index("```")]
-                break
-
-        try:
-            data = _json.loads(json_str)
-        except _json.JSONDecodeError:
-            try:
-                s, e = raw.index("{"), raw.rindex("}") + 1
-                data = _json.loads(raw[s:e])
-            except Exception:
-                logger.error("Could not parse LLM output as JSON")
-                return DiagnosticReport(
-                    study_id="", modality=modality, cancer_type="liver",
-                    overall_impression="Analysis complete — see raw output.",
-                    raw_llm_output=raw, rag_context_used=rag_used,
-                    radiomics_summary=radiomics_summary,
-                )
+        data = coerce_json(raw)
+        if data is None:
+            logger.error("Could not parse LLM output as JSON")
+            return DiagnosticReport(
+                study_id="", modality=modality, cancer_type="liver",
+                overall_impression="Analysis complete — see raw output.",
+                raw_llm_output=raw, rag_context_used=rag_used,
+                radiomics_summary=radiomics_summary,
+            )
 
         lesions: list[LesionFinding] = []
         for item in data.get("lesions", []):
@@ -169,11 +160,13 @@ Return ONLY valid JSON with this exact structure:
                 reasoning=item.get("reasoning"),
             ))
 
+        diff_assessment, differential = parse_differential(data)
         return DiagnosticReport(
             study_id="", modality=modality, cancer_type="liver",
             overall_impression=data.get("overall_impression", ""),
             lesions=lesions,
-            differential_diagnosis=data.get("differential_diagnosis", []),
+            differential_diagnosis=differential,
+            differential_assessment=diff_assessment,
             bclc_stage=data.get("bclc_stage"),
             vascular_involvement=data.get("vascular_involvement"),
             recommendations=data.get("recommendations", []),

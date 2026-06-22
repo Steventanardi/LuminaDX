@@ -183,6 +183,47 @@ export default function WorkflowPanel({
                 </div>
               </div>
             </>)}
+            {cancerType === 'skin' && (<>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 shrink-0 w-16">Fitzpatrick</span>
+                <select value={ctx.fitzpatrick ?? ''}
+                  onChange={e => onCtxChange({ fitzpatrick: e.target.value || null })}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                  className={clsx(INPUT, 'flex-1')}>
+                  <option value="">—</option>
+                  {['I', 'II', 'III', 'IV', 'V', 'VI'].map(v => (
+                    <option key={v} value={v}>Type {v}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 shrink-0 w-16">Site</span>
+                <input type="text" value={ctx.lesion_site ?? ''}
+                  onChange={e => onCtxChange({ lesion_site: e.target.value || null })}
+                  placeholder="e.g. left forearm" className={clsx(INPUT, 'flex-1')} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-400 shrink-0 w-16">Evolution</span>
+                <input type="text" value={ctx.evolution ?? ''}
+                  onChange={e => onCtxChange({ evolution: e.target.value || null })}
+                  placeholder="e.g. enlarging 3 months" className={clsx(INPUT, 'flex-1')} />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {([
+                  ['personal_melanoma_hx', 'Personal melanoma Hx'],
+                  ['family_melanoma_hx', 'Family melanoma Hx'],
+                  ['immunosuppressed', 'Immunosuppressed'],
+                ] as const).map(([key, label]) => (
+                  <button key={key} onClick={() => onCtxChange({ [key]: !ctx[key] })}
+                    className={clsx('px-2.5 py-1 rounded-full text-xs font-medium transition-all',
+                      ctx[key] ? 'bg-accent text-white shadow-sm shadow-accent/25'
+                        : isDark ? 'bg-[#121924] text-slate-500 border border-[#1f2835] hover:border-accent/40 hover:text-slate-300'
+                        : 'bg-white text-slate-500 border border-[#e2e8ee] hover:border-accent/30 hover:text-slate-700')}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>)}
             <textarea value={ctx.notes} onChange={e => onCtxChange({ notes: e.target.value })}
               rows={2} placeholder={t('ctx.notes')}
               className={clsx(INPUT.replace('font-mono', 'resize-none'), 'px-2.5 py-1.5')} />
@@ -241,12 +282,22 @@ export default function WorkflowPanel({
                             on ? selectedFeatures.filter(k => k !== f.key) : [...selectedFeatures, f.key],
                           )}
                           className="accent-accent w-3.5 h-3.5 shrink-0" />
-                        <span className="flex-1">{f.label}</span>
+                        <span className="flex-1 flex flex-col">
+                          <span>{f.label}</span>
+                          {f.group === 'classifier' && f.detail && (
+                            <span className={clsx('text-[8px] leading-tight',
+                              f.ready ? 'text-emerald-500' : 'text-amber-500')}>
+                              {f.ready ? '✓ ' : '⚠ '}{f.detail}
+                            </span>
+                          )}
+                        </span>
                         {f.group === 'cnn' && (
                           <span className="text-[8px] font-semibold uppercase tracking-wider px-1 py-0.5 rounded bg-indigo-500/15 text-indigo-400">CNN</span>
                         )}
                         {f.group === 'classifier' && (
-                          <span className="text-[8px] font-semibold uppercase tracking-wider px-1 py-0.5 rounded bg-amber-500/15 text-amber-500">KNN</span>
+                          <span className="text-[8px] font-semibold uppercase tracking-wider px-1 py-0.5 rounded bg-amber-500/15 text-amber-500">
+                            {f.key === 'skin_classifier' ? 'CNN-7' : 'KNN'}
+                          </span>
                         )}
                       </label>
                     )

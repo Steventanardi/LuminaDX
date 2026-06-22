@@ -72,6 +72,7 @@ frontend/4.0
 
 # ─── Dev agent configs ───
 CLAUDE.md
+claude.md
 Merlin.md
 Radiology-Infer-Mini.md
 Personal/Reference/

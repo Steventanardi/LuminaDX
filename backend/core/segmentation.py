@@ -14,7 +14,7 @@ from loguru import logger
 
 # Standalone helper script that runs TotalSegmentator with a proper __main__
 # guard so nnU-Net's spawned DataLoader workers don't re-launch uvicorn on Windows
-_TOTALSEG_SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "run_totalseg.py"
+_TOTALSEG_SCRIPT = Path(__file__).parent.parent.parent / "scripts" / "shared" / "run_totalseg.py"
 
 
 @dataclass

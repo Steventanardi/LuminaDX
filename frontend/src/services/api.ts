@@ -79,11 +79,28 @@ export const analysisApi = {
 
 // ── RAG ───────────────────────────────────────────────────────────────────────
 
+export interface RagCancer {
+  cancer: string
+  label: string
+  pdf_count: number
+  chunks: number
+  indexed: boolean
+  pdfs: string[]
+}
+
+export interface RagStatus {
+  ready: boolean
+  chunks: number
+  pdf_count: number
+  by_cancer: RagCancer[]
+  knowledge_base_dir?: string
+}
+
 export const ragApi = {
   ingest: (namespace?: string): Promise<{ message: string }> =>
     http.post('/rag/ingest', null, { params: namespace ? { namespace } : undefined }).then(r => r.data),
   query: (query: string, n_results = 5): Promise<{ context: string; found: boolean }> =>
     http.post('/rag/query', { query, n_results }).then(r => r.data),
-  status: (): Promise<{ ready: boolean; chunks: number; pdf_count: number }> =>
+  status: (): Promise<RagStatus> =>
     http.get('/rag/status').then(r => r.data),
 }

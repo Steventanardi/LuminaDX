@@ -140,5 +140,14 @@ class RAGEngine:
         col = self._collections.get(_DEFAULT_COLLECTION)
         return col.count() if col else 0
 
+    def chunk_count_for(self, namespace: str) -> int:
+        """Indexed-chunk count for one cancer's collection (0 if not yet built)."""
+        if not self._client:
+            return 0
+        try:
+            return self._get_collection(namespace).count()
+        except Exception:
+            return 0
+
 
 rag_engine = RAGEngine()

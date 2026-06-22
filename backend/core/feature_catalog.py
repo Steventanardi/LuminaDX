@@ -26,14 +26,15 @@ _FEATURES: dict[str, tuple[str, str]] = {
     "cnn_vgg19":       ("VGG19 deep features",               "cnn"),
     "cnn_resnet50":    ("ResNet50 deep features",            "cnn"),
     # ── classifier ─────────────────────────────────────────────────
-    "knn_classifier":  ("KNN classifier (needs reference set)", "classifier"),
+    "knn_classifier":  ("KNN classifier", "classifier"),
+    "skin_classifier": ("HAM10000 classifier (7-class, trained)", "classifier"),
 }
 
 # Which features are applicable to each cancer (pipeline-dependent).
 _APPLICABLE: dict[str, list[str]] = {
     "skin": [
         "color_constancy", "hair_removal", "clahe", "dermoscopy_abcd",
-        "cnn_vgg16", "cnn_vgg19", "cnn_resnet50", "knn_classifier",
+        "cnn_vgg16", "cnn_vgg19", "cnn_resnet50", "knn_classifier", "skin_classifier",
     ],
     "breast": ["clahe", "breast_density", "cnn_vgg16", "cnn_vgg19", "cnn_resnet50", "knn_classifier"],
     "liver":      ["radiomics", "cnn_vgg16", "cnn_vgg19", "cnn_resnet50", "knn_classifier"],
@@ -43,7 +44,7 @@ _APPLICABLE: dict[str, list[str]] = {
 
 # Default ON for each cancer (the current hardcoded behaviour, CNNs off by default).
 _DEFAULTS: dict[str, list[str]] = {
-    "skin":   ["color_constancy", "hair_removal", "clahe", "dermoscopy_abcd"],
+    "skin":   ["color_constancy", "hair_removal", "clahe", "dermoscopy_abcd", "skin_classifier"],
     "breast": ["clahe", "breast_density"],
     "liver":      ["radiomics"],
     "lung":       ["radiomics"],
@@ -59,14 +60,41 @@ def defaults_for(cancer_type: str) -> list[str]:
     return _DEFAULTS.get(cancer_type, ["radiomics"])
 
 
-def options_for(cancer_type: str) -> list[dict[str, str]]:
-    """Selectable features for a cancer: key, label, group, default-on flag."""
+def _feature_status(cancer_type: str, key: str) -> tuple[bool, str]:
+    """Live availability for status-dependent features.
+
+    Most features are always runnable (ready=True, no detail). The two
+    classifiers depend on external artifacts that may be absent: KNN needs a
+    labelled reference set, the HAM10000 model needs a trained checkpoint. We
+    resolve those at catalog-build time so the picker shows real status instead
+    of a hardcoded "(needs reference set)" label that's wrong once it's filled.
+    Imports are local to avoid import-time coupling / cycles.
+    """
+    if key == "knn_classifier":
+        from core import knn_classifier
+        st = knn_classifier.status(cancer_type)
+        if st["ready"]:
+            return True, f"{st['n_reference']:,} reference images · {len(st['classes'])} classes"
+        if st["n_reference"]:
+            return False, f"only {len(st['classes'])} class(es) — needs ≥2 labelled folders"
+        return False, "needs labelled reference set"
+    if key == "skin_classifier":
+        from core import skin_classifier
+        return (True, "trained checkpoint loaded") if skin_classifier.is_available() \
+            else (False, "no trained checkpoint")
+    return True, ""
+
+
+def options_for(cancer_type: str) -> list[dict]:
+    """Selectable features for a cancer: key, label, group, default-on flag, and
+    live readiness (ready + human-readable detail) for status-dependent ones."""
     defaults = set(defaults_for(cancer_type))
-    out: list[dict[str, str]] = []
+    out: list[dict] = []
     for key in applicable_for(cancer_type):
         label, group = _FEATURES[key]
+        ready, detail = _feature_status(cancer_type, key)
         out.append({"key": key, "label": label, "group": group,
-                    "default": key in defaults})
+                    "default": key in defaults, "ready": ready, "detail": detail})
     return out
 
 
@@ -93,9 +121,25 @@ def knn_backbone_for(features: set[str], default: str = "cnn_resnet50") -> str:
     return chosen[0] if len(chosen) == 1 else default
 
 
+import time as _time
+
+# Short-TTL cache: building the catalog scans the (large) KNN reference dirs for
+# live readiness, so a cold call is ~0.4 s on a 9,600-image set. The picker hits
+# /features on every cancer switch — cache the result briefly so repeat loads are
+# instant. A newly added reference set shows up within _CATALOG_TTL seconds.
+_CATALOG_CACHE: dict[str, tuple[dict, float]] = {}
+_CATALOG_TTL = 20.0
+
+
 def catalog() -> dict[str, dict]:
-    """Full per-cancer feature catalog for the frontend."""
-    return {
+    """Full per-cancer feature catalog for the frontend (briefly cached)."""
+    cached = _CATALOG_CACHE.get("v")
+    now = _time.monotonic()
+    if cached is not None and now - cached[1] < _CATALOG_TTL:
+        return cached[0]
+    data = {
         ct: {"defaults": defaults_for(ct), "options": options_for(ct)}
         for ct in _APPLICABLE
     }
+    _CATALOG_CACHE["v"] = (data, now)
+    return data

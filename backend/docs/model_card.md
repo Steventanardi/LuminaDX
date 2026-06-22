@@ -63,6 +63,17 @@ MedGemma 4B was fine-tuned by Google DeepMind on medical literature, radiology r
 - LI-RADS category agreement: Cohen's κ vs. radiologist ground truth
 - Expected in Chapter 5 (Results) of the thesis
 
+### Skin — HAM10000 classifier (ResNet50, measured 2026-06-16)
+Held-out HAM10000 validation split (1,499 images, stratified seed-42 15%), scored
+via `backend/scripts/skin/eval_skin.py --ham-split --tta`:
+- **7-class top-1: 89.4%** (val-acc baked into checkpoint: 88.9%)
+- **Malignant-vs-benign:** accuracy 0.937, sensitivity 0.808, specificity 0.968, **ROC-AUC 0.959** (TTA, threshold 0.5)
+- Screening operating point (sens ≥ 0.90): threshold ≈ 0.15 → sens 0.95 / spec 0.71
+- Inference uses the **same PIL preprocessing as training** (a prior cv2.resize
+  path aliased the images and cost ~6% accuracy — fixed). Test-time augmentation
+  (4 flip views) adds ~+1% acc / +1.8 AUC.
+- ⚠ Bounded by HAM10000's distribution; not a substitute for histopathology.
+
 ---
 
 ## 5. Known Limitations
@@ -82,7 +93,7 @@ MedGemma 4B was fine-tuned by Google DeepMind on medical literature, radiology r
 
 ## 6. Ethical Considerations
 
-- All DICOM uploads are **de-identified** on receipt per DICOM PS3.15 Basic Application Level Confidentiality Profile (45+ PHI tags removed/replaced — see `scripts/verify_deidentification.py`)
+- All DICOM uploads are **de-identified** on receipt per DICOM PS3.15 Basic Application Level Confidentiality Profile (45+ PHI tags removed/replaced — see `scripts/shared/verify_deidentification.py`)
 - All inference runs **locally** — no patient data leaves the machine
 - **Radiologist-in-the-loop**: PDF and FHIR export are blocked until a licensed radiologist provides a signed review
 - Every upload, analysis, and sign-off is logged in an append-only audit file (`backend/data/logs/audit.jsonl`)

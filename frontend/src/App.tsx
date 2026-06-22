@@ -13,6 +13,7 @@ import WorkflowPanel from './components/WorkflowPanel'
 import { useAuth } from './context/AuthContext'
 import { useAnalysis } from './hooks/useAnalysis'
 import { analysisApi, dicomApi, ragApi } from './services/api'
+import type { RagStatus } from './services/api'
 import { useI18n } from './i18n'
 import type { TKey } from './i18n'
 import type { CancerType, FeatureCatalog, ModelCatalog, PatientContext, UploadResponse } from './types'
@@ -20,7 +21,10 @@ import { CANCER_TYPE_META } from './types'
 
 const DEFAULT_CTX: PatientContext = {
   cirrhosis: false, hepatitis_b: false, hepatitis_c: false,
-  afp_level: null, prior_hcc: false, notes: '',
+  afp_level: null, prior_hcc: false,
+  fitzpatrick: null, lesion_site: null, evolution: null,
+  personal_melanoma_hx: false, family_melanoma_hx: false, immunosuppressed: false,
+  notes: '',
 }
 
 const APP_SHORTCUTS: [string, TKey][] = [
@@ -45,7 +49,9 @@ export default function App() {
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [ctx, setCtx]                     = useState<PatientContext>(DEFAULT_CTX)
   const [previewSlices, setPreviewSlices] = useState<string[]>([])
-  const [ragStatus, setRagStatus]         = useState<{ chunks: number; pdf_count: number } | null>(null)
+  const [ragStatus, setRagStatus]         = useState<RagStatus | null>(null)
+  const [showGuidelines, setShowGuidelines] = useState(false)
+  const [expandedCancer, setExpandedCancer] = useState<string | null>(null)
   const [ragLoading, setRagLoading]       = useState(false)
   const [showRaw, setShowRaw]             = useState(false)
   const [showHistory, setShowHistory]     = useState(false)
@@ -61,6 +67,7 @@ export default function App() {
   const [toast, setToast]                 = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null)
 
   const settingsRef     = useRef<HTMLDivElement>(null)
+  const guidelinesRef   = useRef<HTMLDivElement>(null)
   const prevJobStatus   = useRef<string | null>(null)
 
   // Derived state — declared early so useEffects can reference them
@@ -68,7 +75,10 @@ export default function App() {
   const isDone    = job?.status === 'complete'
   const uploaded  = !!upload
   const hasCtx    = ctx.cirrhosis || ctx.hepatitis_b || ctx.hepatitis_c || ctx.prior_hcc ||
-                    ctx.afp_level !== null || ctx.notes.trim() !== ''
+                    ctx.afp_level !== null ||
+                    !!ctx.fitzpatrick || !!ctx.lesion_site || !!ctx.evolution ||
+                    ctx.personal_melanoma_hx || ctx.family_melanoma_hx || ctx.immunosuppressed ||
+                    ctx.notes.trim() !== ''
 
   useEffect(() => { ragApi.status().then(setRagStatus).catch(() => null) }, [])
   useEffect(() => { analysisApi.models().then(setModelCatalog).catch(() => null) }, [])
@@ -103,6 +113,8 @@ export default function App() {
     const handler = (e: MouseEvent) => {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node))
         setShowSettings(false)
+      if (guidelinesRef.current && !guidelinesRef.current.contains(e.target as Node))
+        setShowGuidelines(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -122,9 +134,9 @@ export default function App() {
   const handleAnalyse   = useCallback(async () => { if (upload) await start(upload.study_id, ctx, selectedModel ?? undefined, selectedFeatures) }, [upload, ctx, selectedModel, selectedFeatures, start])
   const handleReset     = () => { setUpload(null); setCtx(DEFAULT_CTX); setPreviewSlices([]); setShowRaw(false); reset() }
   const handleLogout    = async () => { await logout() }
-  const handleIngestRag = async () => {
+  const handleIngestRag = async (namespace?: string) => {
     setRagLoading(true); setShowSettings(false)
-    try { await ragApi.ingest(); setTimeout(() => ragApi.status().then(setRagStatus), 3000) }
+    try { await ragApi.ingest(namespace); setTimeout(() => ragApi.status().then(setRagStatus), 3000) }
     finally { setRagLoading(false) }
   }
 
@@ -272,12 +284,103 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
           </button>
 
           {ragStatus && (
-            <div className={clsx('flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border hidden sm:flex',
-              ragStatus.pdf_count > 0
-                ? isDark ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : isDark ? 'bg-amber-950/60 text-amber-400 border-amber-800/40' : 'bg-amber-50 text-amber-700 border-amber-200')}>
-              <span className={clsx('w-1.5 h-1.5 rounded-full', ragStatus.pdf_count > 0 ? 'bg-emerald-500' : 'bg-amber-500')} />
-              {ragStatus.pdf_count > 0 ? t('header.guidelines', { n: ragStatus.pdf_count }) : t('header.noGuidelines')}
+            <div className="relative hidden sm:block" ref={guidelinesRef}>
+              <button
+                onClick={() => setShowGuidelines(s => !s)}
+                title={t('header.guidelinesTitle')}
+                className={clsx('flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border transition-colors cursor-pointer',
+                  ragStatus.pdf_count > 0
+                    ? isDark ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40 hover:bg-emerald-900/60' : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                    : isDark ? 'bg-amber-950/60 text-amber-400 border-amber-800/40 hover:bg-amber-900/60' : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
+                  showGuidelines && '!border-accent/50')}>
+                <span className={clsx('w-1.5 h-1.5 rounded-full', ragStatus.pdf_count > 0 ? 'bg-emerald-500' : 'bg-amber-500')} />
+                {ragStatus.pdf_count > 0 ? t('header.guidelines', { n: ragStatus.pdf_count }) : t('header.noGuidelines')}
+                <svg className={clsx('w-3 h-3 transition-transform', showGuidelines && 'rotate-180')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showGuidelines && (
+                <div className={clsx('absolute right-0 top-9 border rounded-xl shadow-2xl z-50 p-2 w-[300px]',
+                  isDark ? 'bg-[#10151d] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
+                  <div className={clsx('flex items-center justify-between px-2 pt-1 pb-2 text-[11px] font-semibold uppercase tracking-wide',
+                    isDark ? 'text-slate-400' : 'text-slate-500')}>
+                    <span>{t('header.guidelinesTitle')}</span>
+                    <span className={clsx('font-mono', isDark ? 'text-slate-500' : 'text-slate-400')}>
+                      {t('header.guidelinesChunks', { n: ragStatus.chunks })}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 max-h-[60vh] overflow-y-auto">
+                    {ragStatus.by_cancer?.map(c => {
+                      const isActive = c.cancer === cancerType
+                      const isOpen = expandedCancer === c.cancer
+                      const citedHere = isActive && report?.guideline_citations
+                        ? report.guideline_citations.filter(cit =>
+                            c.pdfs.some(p => cit.includes(p) || cit.includes(p.replace(/\.pdf$/i, '')))).length
+                        : 0
+                      return (
+                        <div key={c.cancer} className={clsx('rounded-lg',
+                          isActive && (isDark ? 'bg-accent/10 ring-1 ring-accent/30' : 'bg-accent/5 ring-1 ring-accent/20'))}>
+                          <button
+                            onClick={() => setExpandedCancer(isOpen ? null : c.cancer)}
+                            disabled={c.pdf_count === 0}
+                            className={clsx('w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-colors disabled:cursor-default',
+                              c.pdf_count > 0 && (isDark ? 'hover:bg-[#1a2230]' : 'hover:bg-slate-50'))}>
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span className={clsx('w-1.5 h-1.5 rounded-full shrink-0',
+                                c.indexed ? 'bg-emerald-500' : c.pdf_count > 0 ? 'bg-amber-500' : isDark ? 'bg-slate-700' : 'bg-slate-300')} />
+                              <span className={clsx('font-medium truncate', isDark ? 'text-slate-200' : 'text-slate-700')}>{c.label}</span>
+                              {isActive && (
+                                <span className="text-[9px] font-semibold uppercase tracking-wide text-accent shrink-0">{t('header.guidelinesActive')}</span>
+                              )}
+                              {citedHere > 0 && (
+                                <span className={clsx('text-[9px] font-mono px-1 rounded shrink-0', isDark ? 'bg-emerald-900/50 text-emerald-300' : 'bg-emerald-100 text-emerald-700')}
+                                  title={t('header.guidelinesCited')}>★{citedHere}</span>
+                              )}
+                            </span>
+                            <span className={clsx('flex items-center gap-1.5 font-mono text-[11px] shrink-0', isDark ? 'text-slate-400' : 'text-slate-500')}>
+                              <span title={t('header.guidelinesPdfs')}>{t('header.guidelinesCount', { n: c.pdf_count })}</span>
+                              {c.pdf_count > 0 && !c.indexed && (
+                                <span className="text-amber-500" title={t('header.guidelinesNotIndexed')}>⚠</span>
+                              )}
+                              {c.pdf_count > 0 && (
+                                <svg className={clsx('w-3 h-3 transition-transform', isOpen && 'rotate-180')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                                </svg>
+                              )}
+                            </span>
+                          </button>
+                          {isOpen && (
+                            <div className={clsx('px-2 pb-1.5 pt-0.5 space-y-1')}>
+                              {c.pdf_count > 0 && !c.indexed && (
+                                <p className={clsx('text-[10px] px-1.5 py-1 rounded', isDark ? 'bg-amber-950/50 text-amber-400' : 'bg-amber-50 text-amber-700')}>
+                                  {t('header.guidelinesNotIndexed')}
+                                </p>
+                              )}
+                              <ul className="space-y-0.5">
+                                {c.pdfs.map(p => (
+                                  <li key={p} className={clsx('text-[10px] font-mono pl-3.5 pr-1 py-0.5 truncate', isDark ? 'text-slate-400' : 'text-slate-500')} title={p}>
+                                    {p}
+                                  </li>
+                                ))}
+                              </ul>
+                              <button onClick={() => handleIngestRag(c.cancer)} disabled={ragLoading}
+                                className={clsx('w-full text-center px-2 py-1 rounded-md text-[10px] font-medium transition-colors disabled:opacity-50',
+                                  isDark ? 'text-accent hover:bg-accent/10' : 'text-accent hover:bg-accent/8')}>
+                                {ragLoading ? t('settings.ingesting') : t('header.guidelinesReingest', { label: c.label })}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button onClick={() => { setShowGuidelines(false); handleIngestRag() }} disabled={ragLoading}
+                    className={clsx('w-full mt-1.5 text-center px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-50 border',
+                      isDark ? 'text-accent hover:bg-accent/10 border-[#1f2835]' : 'text-accent hover:bg-accent/8 border-[#e2e8ee]')}>
+                    {ragLoading ? t('settings.ingesting') : t('header.guidelinesIngestAll')}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -312,7 +415,7 @@ const PANEL_BTN = clsx('w-8 h-8 rounded-lg border flex items-center justify-cent
             {showSettings && (
               <div className={clsx('absolute right-0 top-10 border rounded-xl shadow-2xl z-50 p-1.5 min-w-[180px] space-y-0.5',
                 isDark ? 'bg-[#10151d] border-[#1f2835]' : 'bg-white border-[#e2e8ee]')}>
-                <button onClick={handleIngestRag} disabled={ragLoading} className={clsx('w-full text-left px-3 py-2 rounded-lg text-xs transition-colors font-medium flex items-center gap-2 disabled:opacity-50', isDark ? 'text-slate-300 hover:bg-[#1a2230] hover:text-white' : 'text-slate-700 hover:bg-accent/8 hover:text-accent')}>
+                <button onClick={() => handleIngestRag()} disabled={ragLoading} className={clsx('w-full text-left px-3 py-2 rounded-lg text-xs transition-colors font-medium flex items-center gap-2 disabled:opacity-50', isDark ? 'text-slate-300 hover:bg-[#1a2230] hover:text-white' : 'text-slate-700 hover:bg-accent/8 hover:text-accent')}>
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                   {ragLoading ? t('settings.ingesting') : t('settings.ingest')}
                 </button>

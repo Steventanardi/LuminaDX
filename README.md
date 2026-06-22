@@ -145,9 +145,9 @@ The diagnostic pipeline follows a **6-stage sequential architecture** where each
 
 ```text
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│  1. DICOM    │    │  2. De-ID    │    │  3. Segment  │    │  4. Extract  │    │  5. Retrieve │    │  6. Generate │
-│   Upload     │───▶│  45+ PHI     │───▶│  Organ +     │───▶│  Radiomics   │───▶│  RAG Context │───▶│  VLM Report  │
-│              │    │  Tags        │    │  Lesion      │    │  + CNN + KNN │    │  Guidelines  │    │  + Parsing   │
+│  1. Upload   │    │  2. Pre-proc │    │  3. Segment  │    │  4. Extract  │    │  5. Retrieve │    │  6. Generate │
+│  DICOM/Image │───▶│  De-ID +     │───▶│  Organ +     │───▶│  Radiomics   │───▶│  RAG Context │───▶│  VLM Report  │
+│              │    │  Enhancement │    │  Lesion      │    │  + CNN + KNN │    │  Guidelines  │    │  + Parsing   │
 └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘    └──────┬───────┘
                                                                                                           │
                     ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                               │
@@ -160,8 +160,8 @@ The diagnostic pipeline follows a **6-stage sequential architecture** where each
 
 | Stage | Component | What It Does |
 |:---:|:---|:---|
-| 1 | **DICOM Upload** | Receives CT/MRI/Dermoscopy/Mammography files via `/api/dicom/upload` |
-| 2 | **De-identification** | Strips 45+ DICOM PHI tags per PS3.15 BALCP before any processing |
+| 1 | **Upload** | Receives CT/MRI/Dermoscopy/Mammography files via `/api/dicom/upload` |
+| 2 | **Pre-processing** | Strips 45+ DICOM PHI tags per PS3.15 BALCP; applies CLAHE, DullRazor, and Colour Constancy |
 | 3 | **Segmentation** | TotalSegmentator dual-task (organ → lesion) with connected component analysis |
 | 4 | **Feature Extraction** | PyRadiomics (1,000+ features) + CNN deep features (VGG16/19/ResNet50) + KNN/trained classifiers |
 | 5 | **RAG Retrieval** | ChromaDB cosine similarity search over ingested clinical guidelines |
@@ -563,10 +563,10 @@ LuminaDx/
 │   ├── models/
 │   │   └── schemas.py            # Pydantic schemas (DiagnosticReport, etc.)
 │   ├── data/                     # Local data (uploads, processed, DBs, logs, weights)
-│   ├── tests/                    # pytest test suite (8 test files)
+│   ├── tests/                    # pytest test suite (9 test files)
 │   ├── scripts/                  # Backend-specific scripts
-│   │   ├── shared/               #   seed_admin, ingest_guidelines, etc.
-│   │   └── skin/                 #   Skin evaluation scripts
+│   │   ├── shared/               #   KNN eval, guideline ingestion
+│   │   └── skin/                 #   Skin classification evaluation
 │   ├── docs/                     # Model card & documentation
 │   ├── config.py                 # Pydantic Settings (env-driven configuration)
 │   ├── main.py                   # FastAPI app entrypoint (v0.2.0)
@@ -605,7 +605,7 @@ LuminaDx/
 │   ├── vite.config.ts            # Vite build configuration
 │   └── package.json              # Node.js dependencies
 ├── scripts/                      # Project-wide utility scripts
-│   ├── shared/                   #   Setup, seed, ingest, verify de-ID, TotalSeg runner
+│   ├── shared/                   #   Setup, seed, verify de-ID, TotalSeg runner
 │   ├── health/                   #   Health check script + documentation
 │   ├── liver/                    #   Batch validation & results summarisation
 │   ├── skin/                     #   HAM10000 classifier training

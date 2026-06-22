@@ -63,14 +63,37 @@ class DermFeatures:
     color_count: int            # distinct dominant colour clusters in the lesion
     lesion_area_frac: float     # fraction of image occupied by the lesion
     segmented: bool             # whether a lesion was confidently isolated
+    # Segmentation-quality caveats (set by the hardened segmenter)
+    multi_lesion: bool = False  # a second comparable lesion was present (metrics use one)
+    low_contrast: bool = False  # weak lesion/skin separation — measurements less reliable
+    border_artifact: bool = False  # chosen blob touches the frame edge (possible crop/vignette)
+    # Stolz ABCD Total Dermoscopy Score components
+    tds_a: int = 0              # asymmetry axes (0-2)
+    tds_b: int = 0              # border-segment abrupt cutoffs (0-8)
+    tds_c: int = 1             # colour count (1-6)
+    tds_d: int = 1             # differential structures, estimated (1-5)
+    tds: float = 0.0           # TDS = 1.3·A + 0.1·B + 0.5·C + 0.5·D
+    tds_category: str = ""     # benign / suspicious / melanoma-suspicious
 
     def summary(self) -> str:
         if not self.segmented:
             return ("Automated lesion segmentation could not confidently isolate a "
                     "single lesion (low contrast or multiple lesions); rely on visual "
                     "assessment of the enhanced image.")
+        caveats = []
+        if self.multi_lesion:
+            caveats.append("more than one lesion of comparable size was detected — the "
+                           "metrics below describe only the largest/most central one")
+        if self.low_contrast:
+            caveats.append("lesion-to-skin contrast is weak, so the border, asymmetry and "
+                           "colour measurements are less reliable")
+        if self.border_artifact:
+            caveats.append("the segmented lesion touches the image edge (possible crop, "
+                           "ruler or vignette) — diameter/asymmetry may be truncated")
+        caveat_txt = ("  ⚠ Segmentation caveats: " + "; ".join(caveats) + ".\n") if caveats else ""
         return (
             "Computed from automated lesion segmentation on the enhanced image:\n"
+            f"{caveat_txt}"
             f"  • Asymmetry: {self.asymmetry_pct:.1f}% area mismatch across principal axes "
             f"({'asymmetric' if self.asymmetry_pct >= 15 else 'fairly symmetric'})\n"
             f"  • Border irregularity index: {self.border_irregularity:.2f} "
@@ -80,44 +103,126 @@ class DermFeatures:
             f"  • Colour variegation: {self.color_count} distinct dominant colour cluster(s) "
             f"({'multi-coloured' if self.color_count >= 3 else 'uniform colour'})\n"
             f"  • Lesion covers {self.lesion_area_frac * 100:.0f}% of the image\n"
-            "NOTE: these are unvalidated automated estimates to support — not replace — "
-            "your dermoscopic ABCD/7-point assessment."
+            "\n"
+            f"Stolz ABCD Total Dermoscopy Score (TDS = 1.3·A + 0.1·B + 0.5·C + 0.5·D):\n"
+            f"  • A (asymmetry): {self.tds_a}/2 axes  • B (border cutoffs): {self.tds_b}/8 "
+            f" • C (colours): {self.tds_c}/6  • D (structures, estimated): {self.tds_d}/5\n"
+            f"  • TDS = {self.tds:.2f}  →  {self.tds_category}\n"
+            "  (TDS <4.75 benign · 4.75–5.45 suspicious · >5.45 melanoma-suspicious)\n"
+            "NOTE: automated TDS estimate — A/B measured geometrically, C from colour "
+            "clustering, D approximated from texture. Decision support only; it does not "
+            "replace your manual dermoscopic ABCD/7-point assessment."
         )
 
 
-def _segment_lesion(img: np.ndarray) -> Optional[np.ndarray]:
-    """Otsu segmentation of the (darker) lesion; returns the largest blob mask."""
+def _fov_mask(gray: np.ndarray) -> np.ndarray:
+    """Usable field-of-view: drop the near-black vignette/border ring that many
+    dermoscopes leave around the image. Vignette = very dark pixels in a blob
+    that touches the frame edge; without this, Otsu locks onto the black ring
+    instead of the lesion. Returns 255 inside the FOV, 0 in vignette."""
+    h, w = gray.shape
+    _, dark = cv2.threshold(gray, 25, 255, cv2.THRESH_BINARY_INV)
+    dark = cv2.morphologyEx(dark, cv2.MORPH_CLOSE,
+                            cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
+    n, lbl, stats, _ = cv2.connectedComponentsWithStats(dark, 8)
+    vignette = np.zeros((h, w), np.uint8)
+    for i in range(1, n):
+        x, y, bw, bh, area = stats[i]
+        touches = x == 0 or y == 0 or x + bw == w or y + bh == h
+        if touches and area > 0.005 * h * w:
+            vignette[lbl == i] = 255
+    return cv2.bitwise_not(vignette)
+
+
+def _segment_lesion(img: np.ndarray) -> Optional[tuple[np.ndarray, dict]]:
+    """Otsu segmentation of the (darker) lesion, hardened against vignette, ruler
+    and ink artifacts, low contrast and multiple lesions.
+
+    Returns ``(mask, info)`` where ``info`` carries quality flags
+    (``multi_lesion``, ``low_contrast``, ``border_artifact``), or None when no
+    lesion can be confidently isolated.
+    """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    h, w = gray.shape
+    fov = _fov_mask(gray)
+
+    # Threshold only over FOV pixels so the vignette can't bias Otsu's cutoff.
+    fov_vals = gray[fov > 0]
+    if fov_vals.size < 0.05 * h * w:
+        return None
+    thr, _ = cv2.threshold(fov_vals, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    lesion_vals = fov_vals[fov_vals <= thr]
+    skin_vals = fov_vals[fov_vals > thr]
+    if lesion_vals.size < 10 or skin_vals.size < 10:
+        return None
+    contrast = abs(float(lesion_vals.mean()) - float(skin_vals.mean()))
+    if contrast < 6.0:  # essentially no lesion/skin separation → unusable
+        return None
+
+    mask = ((gray <= thr) & (fov > 0)).astype(np.uint8) * 255
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    n, lbl, stats, cents = cv2.connectedComponentsWithStats(mask, 8)
+    if n <= 1:
+        return None
+    img_area = float(h * w)
+    cx0, cy0 = w / 2.0, h / 2.0
+    diag = float(np.hypot(h, w))
+    candidates = []
+    for i in range(1, n):
+        x, y, bw, bh, area = stats[i]
+        frac = area / img_area
+        if frac < 0.01 or frac > 0.95:
+            continue
+        touch = bool(x <= 1 or y <= 1 or x + bw >= w - 1 or y + bh >= h - 1)
+        ccx, ccy = cents[i]
+        dist = float(np.hypot(ccx - cx0, ccy - cy0)) / diag  # 0 = centred, ~0.5 = corner
+        candidates.append({"id": int(i), "area": float(area), "frac": frac,
+                           "dist": dist, "touch": touch})
+    if not candidates:
+        return None
+
+    # Prefer large, central blobs; penalise border-touching ones (ruler/vignette
+    # remnants or lesions cropped by the frame), but never discard them entirely.
+    def _score(c: dict) -> float:
+        return c["area"] * (1.0 - min(c["dist"], 1.0)) * (0.4 if c["touch"] else 1.0)
+
+    candidates.sort(key=_score, reverse=True)
+    best = candidates[0]
+    others = [c for c in candidates[1:]
+              if not c["touch"] and c["area"] >= 0.4 * best["area"]]
+
+    clean = np.zeros((h, w), np.uint8)
+    clean[lbl == best["id"]] = 255
+    # Fill internal holes (inpainted hair, glare) so geometry isn't pock-marked.
+    cnts, _ = cv2.findContours(clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cnts:
         return None
-    largest = max(cnts, key=cv2.contourArea)
-    area = cv2.contourArea(largest)
-    h, w = mask.shape
-    frac = area / float(h * w)
-    # Reject if the "lesion" is a tiny speck or fills almost the whole frame
-    # (latter usually means vignette/border, not a lesion).
-    if frac < 0.01 or frac > 0.95:
-        return None
-    clean = np.zeros_like(mask)
-    cv2.drawContours(clean, [largest], -1, 255, thickness=cv2.FILLED)
-    return clean
+    clean = np.zeros((h, w), np.uint8)
+    cv2.drawContours(clean, [max(cnts, key=cv2.contourArea)], -1, 255, thickness=cv2.FILLED)
+
+    info = {
+        "multi_lesion": len(others) > 0,
+        "low_contrast": contrast < 12.0,
+        "border_artifact": best["touch"],
+    }
+    return clean, info
 
 
-def _asymmetry(mask: np.ndarray) -> float:
-    """Align lesion principal axis to horizontal, then compare halves."""
+def _asymmetry_axes(mask: np.ndarray) -> tuple[float, float]:
+    """Align lesion principal axis to horizontal, then compare halves on each axis.
+
+    Returns (mismatch_horizontal_pct, mismatch_vertical_pct), each 0-100.
+    """
     ys, xs = np.where(mask > 0)
     if len(xs) < 10:
-        return 0.0
+        return 0.0, 0.0
     m = cv2.moments(mask, binaryImage=True)
     if m["m00"] == 0:
-        return 0.0
+        return 0.0, 0.0
     cx, cy = m["m10"] / m["m00"], m["m01"] / m["m00"]
     mu20, mu02, mu11 = m["mu20"] / m["m00"], m["mu02"] / m["m00"], m["mu11"] / m["m00"]
     theta = 0.5 * np.arctan2(2 * mu11, mu20 - mu02)
@@ -130,10 +235,16 @@ def _asymmetry(mask: np.ndarray) -> float:
     flip_v = cv2.flip(aligned, 0)  # top-bottom
     area = float(np.count_nonzero(aligned))
     if area == 0:
-        return 0.0
-    mismatch_h = np.count_nonzero(cv2.bitwise_xor(aligned, flip_h)) / (2 * area)
-    mismatch_v = np.count_nonzero(cv2.bitwise_xor(aligned, flip_v)) / (2 * area)
-    return float(np.clip((mismatch_h + mismatch_v) / 2 * 100, 0, 100))
+        return 0.0, 0.0
+    mismatch_h = np.count_nonzero(cv2.bitwise_xor(aligned, flip_h)) / (2 * area) * 100
+    mismatch_v = np.count_nonzero(cv2.bitwise_xor(aligned, flip_v)) / (2 * area) * 100
+    return float(np.clip(mismatch_h, 0, 100)), float(np.clip(mismatch_v, 0, 100))
+
+
+def _asymmetry(mask: np.ndarray) -> float:
+    """Mean area mismatch across the two principal axes (0-100)."""
+    h, v = _asymmetry_axes(mask)
+    return (h + v) / 2
 
 
 def _border_irregularity(mask: np.ndarray) -> float:
@@ -157,29 +268,124 @@ def _max_diameter(mask: np.ndarray) -> float:
 
 
 def _color_count(img: np.ndarray, mask: np.ndarray, k: int = 6) -> int:
-    """k-means on lesion pixels; count clusters holding >=8% of pixels."""
+    """k-means on lesion pixels; count clusters holding >=8% of pixels.
+
+    Deterministic: both the pixel subsample and OpenCV's k-means initialisation
+    are seeded, so the same lesion yields the same colour count (and therefore
+    the same TDS C score) across runs — otherwise an unseeded subsample/init can
+    nudge TDS across the 4.75 benign/suspicious boundary between identical runs.
+    """
     pixels = img[mask > 0].astype(np.float32)
     if len(pixels) < k:
         return 1
-    # subsample for speed on large lesions
+    # subsample for speed on large lesions (seeded for reproducibility)
     if len(pixels) > 20000:
-        idx = np.random.choice(len(pixels), 20000, replace=False)
+        rng = np.random.default_rng(42)
+        idx = rng.choice(len(pixels), 20000, replace=False)
         pixels = pixels[idx]
+    cv2.setRNGSeed(42)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1.0)
     _, labels, _ = cv2.kmeans(pixels, k, None, criteria, 3, cv2.KMEANS_PP_CENTERS)
     counts = np.bincount(labels.flatten(), minlength=k)
     return int(np.count_nonzero(counts / counts.sum() >= 0.08))
 
 
-def _compute_features(img: np.ndarray, mask: np.ndarray) -> DermFeatures:
+# ── Stolz TDS components ────────────────────────────────────────────────────
+def _tds_a(mask: np.ndarray, axis_thresh: float = 12.0) -> int:
+    """A score (0-2): number of principal axes with significant area asymmetry."""
+    h, v = _asymmetry_axes(mask)
+    return int(h >= axis_thresh) + int(v >= axis_thresh)
+
+
+def _tds_b(img: np.ndarray, mask: np.ndarray, sharp_thresh: float = 18.0) -> int:
+    """B score (0-8): pigment border divided into 8 octants; count octants whose
+    pigment ends abruptly (sharp inside-vs-outside intensity step) rather than
+    fading gradually."""
+    m = cv2.moments(mask, binaryImage=True)
+    if m["m00"] == 0:
+        return 0
+    cx, cy = m["m10"] / m["m00"], m["m01"] / m["m00"]
+
+    # narrow bands just inside and just outside the lesion border
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    inner = cv2.subtract(mask, cv2.erode(mask, k))
+    outer = cv2.subtract(cv2.dilate(mask, k), mask)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    octants_sharp = 0
+    for i in range(8):
+        a0, a1 = i * (np.pi / 4) - np.pi, (i + 1) * (np.pi / 4) - np.pi
+        sharp = _octant_step(gray, inner, outer, cx, cy, a0, a1)
+        if sharp >= sharp_thresh:
+            octants_sharp += 1
+    return int(octants_sharp)
+
+
+def _octant_step(gray: np.ndarray, inner: np.ndarray, outer: np.ndarray,
+                 cx: float, cy: float, a0: float, a1: float) -> float:
+    """Mean inside-vs-outside intensity step for border pixels in one angular sector."""
+    def sector_vals(band: np.ndarray) -> np.ndarray:
+        ys, xs = np.where(band > 0)
+        if len(xs) == 0:
+            return np.empty(0, np.float32)
+        ang = np.arctan2(ys - cy, xs - cx)
+        sel = (ang >= a0) & (ang < a1)
+        return gray[ys[sel], xs[sel]]
+
+    iv, ov = sector_vals(inner), sector_vals(outer)
+    if len(iv) < 5 or len(ov) < 5:
+        return 0.0
+    return abs(float(np.mean(iv)) - float(np.mean(ov)))
+
+
+def _tds_d(img: np.ndarray, mask: np.ndarray) -> int:
+    """D score (1-5): differential structures. True structure typing (network,
+    globules, dots, streaks, structureless) needs dedicated detectors; here we
+    approximate structural richness from intra-lesion texture energy so the LLM
+    has a number — explicitly flagged as an estimate in the summary."""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    lap = cv2.Laplacian(gray, cv2.CV_64F, ksize=3)
+    vals = lap[mask > 0]
+    if vals.size == 0:
+        return 1
+    energy = float(np.var(vals))
+    # empirical bins on Laplacian variance → 1..5 structural-richness levels
+    for thr, score in ((50, 1), (200, 2), (500, 3), (1200, 4)):
+        if energy < thr:
+            return score
+    return 5
+
+
+def _tds_category(tds: float) -> str:
+    if tds < 4.75:
+        return "benign melanocytic lesion (TDS <4.75)"
+    if tds <= 5.45:
+        return "suspicious — short-term follow-up or excision (TDS 4.75–5.45)"
+    return "highly suspicious for melanoma (TDS >5.45)"
+
+
+def _compute_features(img: np.ndarray, mask: np.ndarray,
+                      info: Optional[dict] = None) -> DermFeatures:
+    info = info or {}
     h, w = mask.shape
+    colors = _color_count(img, mask)
+    a = _tds_a(mask)
+    b = _tds_b(img, mask)
+    c = int(np.clip(colors, 1, 6))
+    d = _tds_d(img, mask)
+    tds = round(1.3 * a + 0.1 * b + 0.5 * c + 0.5 * d, 2)
     return DermFeatures(
         asymmetry_pct=_asymmetry(mask),
         border_irregularity=_border_irregularity(mask),
         diameter_px=_max_diameter(mask),
-        color_count=_color_count(img, mask),
+        color_count=colors,
         lesion_area_frac=float(np.count_nonzero(mask)) / float(h * w),
         segmented=True,
+        multi_lesion=bool(info.get("multi_lesion", False)),
+        low_contrast=bool(info.get("low_contrast", False)),
+        border_artifact=bool(info.get("border_artifact", False)),
+        tds_a=a, tds_b=b, tds_c=c, tds_d=d,
+        tds=tds, tds_category=_tds_category(tds),
     )
 
 
@@ -216,10 +422,11 @@ def preprocess_dermoscopy(
 
     if not compute_abcd:
         return None
-    mask = _segment_lesion(enhanced)
-    if mask is None:
+    seg = _segment_lesion(enhanced)
+    if seg is None:
         return DermFeatures(0.0, 0.0, 0.0, 0, 0.0, segmented=False)
-    return _compute_features(enhanced, mask)
+    mask, info = seg
+    return _compute_features(enhanced, mask, info)
 
 
 @dataclass
@@ -228,6 +435,7 @@ class MammoFeatures:
     percent_density: float     # fibroglandular (dense) tissue % within the breast
     birads_density: str        # ACR density category a / b / c / d
     segmented: bool
+    low_contrast: bool = False  # weak breast/background separation — estimate less reliable
 
     def summary(self) -> str:
         if not self.segmented:
@@ -239,8 +447,12 @@ class MammoFeatures:
             "c": "heterogeneously dense",
             "d": "extremely dense",
         }.get(self.birads_density, "")
+        caveat = ("  ⚠ Weak breast/background separation (low contrast or an already-"
+                  "processed image) — treat the density estimate with extra caution.\n"
+                  if self.low_contrast else "")
         return (
             "Computed from automated breast-region segmentation:\n"
+            f"{caveat}"
             f"  • Mammographic percent density: {self.percent_density:.0f}% "
             f"(fibroglandular vs total breast area)\n"
             f"  • Estimated ACR breast density: category {self.birads_density.upper()} ({cat})\n"
@@ -297,11 +509,16 @@ def compute_mammographic_density(src_path: Path) -> Optional[MammoFeatures]:
     dense_px = int(np.count_nonzero((img > thr) & (breast > 0)))
     pct = dense_px / breast_px * 100.0
 
+    # Quality flag: weak breast-vs-background separation makes the estimate shaky.
+    bg_vals = img[breast == 0]
+    contrast = (float(breast_vals.mean()) - float(bg_vals.mean())) if bg_vals.size else 255.0
+
     return MammoFeatures(
         breast_area_frac=breast_px / float(h * w),
         percent_density=pct,
         birads_density=_birads_density(pct),
         segmented=True,
+        low_contrast=contrast < 25.0,
     )
 
 

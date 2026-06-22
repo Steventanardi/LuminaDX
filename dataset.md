@@ -8,7 +8,7 @@ Two integration shapes exist in this repo:
 - **Skin** → the KNN classifier consumes a *labelled image folder* tree
   (`data/reference/skin/<label>/*.jpg`). Datasets for skin must therefore be
   **classification** sets (benign / malignant or per-diagnosis classes). Use one set to
-  *build* the reference index and a **non-overlapping** set to run `scripts/eval_knn.py`.
+  *build* the reference index and a **non-overlapping** set to run `backend/scripts/shared/eval_knn.py`.
 - **Liver / Lung / Breast / Colorectal** → the DICOM pipeline (TotalSegmentator +
   PyRadiomics + multimodal LLM). These want **DICOM CT/MR volumes** (or, for breast,
   full-field digital mammography), ideally with segmentation masks or lesion labels.
@@ -166,9 +166,11 @@ classifier/eval has something to contrast against and you can measure specificit
 3. Build (if needed): `POST /api/analysis/knn/build/skin` or rebuild via the reference dir.
 4. Evaluate:
    ```powershell
-   .venv\Scripts\python.exe scripts\eval_knn.py --cancer skin --test-dir "C:\path\to\isic2020_test" --backbone cnn_resnet50 --k 5
+   .venv\Scripts\python.exe scripts\shared\eval_knn.py --cancer skin --test-dir "C:\path\to\isic2020_test" --backbone cnn_resnet50 --k 5
    ```
 5. Repeat with `--backbone cnn_vgg19` to compare extractors for the thesis.
+6. To compare KNN against the **trained classifier and LLM** on one shared split,
+   use `backend/scripts/skin/eval_skin.py` (see its README).
 
 ---
 

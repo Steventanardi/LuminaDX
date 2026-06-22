@@ -61,9 +61,19 @@ export interface LesionFinding {
   // Generic scoring (skin / lung / breast / colorectal)
   score_system: string | null
   score: string | null
+  // Skin-specific structured scoring
+  dermoscopy_score: number | null
+  abcde: Record<string, boolean | null> | null
   major_features: string[]
   ancillary_features: string[]
   reasoning: string | null
+}
+
+export interface DifferentialItem {
+  diagnosis: string
+  likelihood?: string | null          // 'high' | 'moderate' | 'low'
+  supporting_features: string[]       // evidence FOR (pros)
+  opposing_features: string[]         // evidence AGAINST (cons)
 }
 
 export interface DiagnosticReport {
@@ -75,6 +85,7 @@ export interface DiagnosticReport {
   overall_impression: string
   lesions: LesionFinding[]
   differential_diagnosis: string[]
+  differential_assessment?: DifferentialItem[]
   bclc_stage: string | null          // liver
   vascular_involvement: string | null // liver
   staging: string | null             // generic (other cancers)
@@ -111,11 +122,19 @@ export interface AnalysisJob {
 }
 
 export interface PatientContext {
+  // Liver
   cirrhosis: boolean
   hepatitis_b: boolean
   hepatitis_c: boolean
   afp_level: number | null
   prior_hcc: boolean
+  // Skin
+  fitzpatrick: string | null
+  lesion_site: string | null
+  evolution: string | null
+  personal_melanoma_hx: boolean
+  family_melanoma_hx: boolean
+  immunosuppressed: boolean
   notes: string
 }
 
@@ -144,8 +163,10 @@ export type ModelCatalog = Record<string, CancerModelInfo>
 export interface FeatureOption {
   key: string
   label: string
-  group: string      // "preprocessing" | "extractor" | "cnn"
+  group: string      // "preprocessing" | "extractor" | "cnn" | "classifier"
   default: boolean
+  ready?: boolean    // live availability (classifiers: reference set / checkpoint present)
+  detail?: string    // human-readable status, e.g. "9,605 reference images · 2 classes"
 }
 
 export interface CancerFeatureInfo {

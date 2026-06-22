@@ -35,16 +35,47 @@ async def query(req: RagQueryRequest, current_user: User = Depends(get_current_u
     return {"query": req.query, "context": ctx, "found": bool(ctx)}
 
 
+# Display order + label for each cancer's guideline collection. Liver lives in
+# the knowledge-base root; the others in same-named subfolders.
+_CANCER_NS = [
+    ("liver", "Liver"),
+    ("skin", "Skin"),
+    ("lung", "Lung"),
+    ("breast", "Breast"),
+    ("colorectal", "Colorectal"),
+]
+
+
 @router.get("/status")
 async def status():
-    # Count PDFs in the root (liver) plus each cancer-specific subfolder.
+    # Per-cancer breakdown: PDFs on disk + chunks actually indexed in the vector
+    # store, so the header badge can show which cancer has how many guidelines
+    # (and flag PDFs that are present but not yet ingested).
     kb = settings.knowledge_base_dir
-    total_pdfs = len(list(kb.glob("*.pdf"))) + sum(
-        len(list(d.glob("*.pdf"))) for d in kb.iterdir() if d.is_dir()
-    )
+    by_cancer = []
+    total_pdfs = 0
+    total_chunks = 0
+    for ns, label in _CANCER_NS:
+        # Same resolution as ingest: prefer the cancer subfolder; liver may also
+        # live in the knowledge-base root (legacy layout) — fall back to it.
+        sub = kb / ns
+        d = sub if sub.exists() else (kb if ns == "liver" else None)
+        pdfs = sorted(p.name for p in d.glob("*.pdf")) if d and d.exists() else []
+        chunks = rag_engine.chunk_count_for(ns)
+        total_pdfs += len(pdfs)
+        total_chunks += chunks
+        by_cancer.append({
+            "cancer": ns,
+            "label": label,
+            "pdf_count": len(pdfs),
+            "chunks": chunks,
+            "indexed": chunks > 0,
+            "pdfs": pdfs,
+        })
     return {
         "ready": rag_engine.ready,
-        "chunks": rag_engine.chunk_count,
+        "chunks": total_chunks,
         "pdf_count": total_pdfs,
+        "by_cancer": by_cancer,
         "knowledge_base_dir": str(settings.knowledge_base_dir),
     }

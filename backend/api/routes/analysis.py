@@ -24,7 +24,7 @@ from core.image_preprocess import preprocess_dermoscopy, preprocess_mammography,
 from core.llm_client import llm_client
 from core.modules import registry
 from core import model_catalog, feature_catalog
-from core import cnn_features, knn_classifier
+from core import cnn_features, knn_classifier, skin_classifier
 from core.rag_engine import rag_engine
 from core.radiomics_extractor import extract, summarize
 from core.segmentation import SegmentationResult, run_segmentation
@@ -89,6 +89,44 @@ def _run_knn(job: AnalysisJob, cancer_type: str, image_path: Path, feat_set: set
     )
 
 
+def _run_skin_classifier(job: AnalysisJob, image_paths: list[Path], feat_set: set[str]) -> str:
+    """Run the trained HAM10000 classifier on each raw lesion view if selected.
+
+    Classifies the RAW (un-enhanced) images: the HAM10000 model was trained on
+    raw dermoscopy JPGs, so feeding it the colour-constancy / hair-removal / CLAHE
+    output is an out-of-distribution input that degrades accuracy. Every uploaded
+    view is classified (not just the first) so multi-lesion submissions get a
+    per-image prediction, matching what the LLM and the ABCD metrics already see.
+    """
+    if "skin_classifier" not in feat_set:
+        return ""
+    if not skin_classifier.is_available():
+        return (
+            "HAM10000 classifier requested but no trained checkpoint was found at "
+            f"{skin_classifier.CHECKPOINT}. Train it with "
+            "scripts/train_skin_classifier.py to enable 7-class predictions."
+        )
+    if not image_paths:
+        return ""
+    _step(job, AnalysisStatus.EXTRACTING, 52, "Classifying (HAM10000 model) …")
+    summaries: list[str] = []
+    for i, path in enumerate(image_paths):
+        try:
+            res = skin_classifier.classify(path, device=settings.device, tta=True)
+        except Exception as exc:
+            logger.warning(f"Skin classifier failed for {path.name}: {exc}")
+            continue
+        if res is None:  # unreadable image — skip, keep classifying the rest
+            continue
+        prefix = f"Image {i + 1} ({path.name}):\n" if len(image_paths) > 1 else ""
+        summaries.append(prefix + res.summary())
+    if not summaries:
+        return ""
+    header = ("HAM10000 classifier — per-image predictions below.\n\n"
+              if len(summaries) > 1 else "")
+    return header + "\n\n".join(summaries)
+
+
 async def _pipeline(
     job: AnalysisJob,
     study_dir: Path,
@@ -142,6 +180,18 @@ async def _run_image_pipeline(
     study_id = job.study_id
     t = {}
 
+    # Truthful preprocessing note for the LLM: only the enhancement steps the user
+    # actually selected ran. Skin-only (the other image pipeline, breast, keeps its
+    # own prompt wording). None elsewhere => no note appended.
+    applied_preprocessing: Optional[list[str]] = None
+    if module.cancer_type == "skin":
+        _enh = {
+            "color_constancy": "colour-constancy normalisation (Shades-of-Gray)",
+            "hair_removal": "hair removal (DullRazor)",
+            "clahe": "CLAHE contrast enhancement",
+        }
+        applied_preprocessing = [label for key, label in _enh.items() if key in feat_set]
+
     _step(job, AnalysisStatus.PROCESSING, 10, "Loading image files …")
     image_names = meta.get("image_files", [])
     image_files = [study_dir / n for n in image_names if (study_dir / n).exists()]
@@ -165,30 +215,50 @@ async def _run_image_pipeline(
     seg = SegmentationResult()
     montage = image_files[0]
     radiomics_summary = ""
+    # Images sent to the LLM. Skin may submit several lesion views; other image
+    # pipelines stay single (fall back to `montage`).
+    llm_images: list[Path] = []
+    MAX_SKIN_IMAGES = 4
 
     # Skin: dermoscopy enhancement (colour constancy → hair removal → CLAHE)
-    # plus quantitative ABCD features — each step user-selectable.
+    # plus quantitative ABCD/TDS features — each step user-selectable. Every
+    # uploaded view is enhanced, measured and shown to the LLM together (so it
+    # can compare lesions), not just the first.
     if module.cancer_type == "skin" and (
         feat_set & {"color_constancy", "hair_removal", "clahe", "dermoscopy_abcd"}
     ):
-        _step(job, AnalysisStatus.PROCESSING, 35, "Enhancing dermoscopy image …")
-        enhanced_path = proc_dir / "skin_enhanced.png"
-        try:
-            feats = preprocess_dermoscopy(
-                montage, enhanced_path,
-                color_constancy="color_constancy" in feat_set,
-                hair_removal="hair_removal" in feat_set,
-                clahe="clahe" in feat_set,
-                compute_abcd="dermoscopy_abcd" in feat_set,
-            )
-            if enhanced_path.exists():
-                montage = enhanced_path
-                slices_b64[0] = base64.b64encode(enhanced_path.read_bytes()).decode()
-                store.save_slices(job.job_id, slices_b64, raw_b64)
-            if feats is not None:
-                radiomics_summary = feats.summary()
-        except Exception as exc:  # never let preprocessing block diagnosis
-            logger.warning(f"Dermoscopy preprocessing failed, using raw image: {exc}")
+        skin_inputs = image_files[:MAX_SKIN_IMAGES]
+        _step(job, AnalysisStatus.PROCESSING, 35,
+              f"Enhancing {len(skin_inputs)} dermoscopy image(s) …")
+        enhanced_paths: list[Path] = []
+        summaries: list[str] = []
+        for i, src in enumerate(skin_inputs):
+            enhanced_path = proc_dir / f"skin_enhanced_{i}.png"
+            try:
+                feats = preprocess_dermoscopy(
+                    src, enhanced_path,
+                    color_constancy="color_constancy" in feat_set,
+                    hair_removal="hair_removal" in feat_set,
+                    clahe="clahe" in feat_set,
+                    compute_abcd="dermoscopy_abcd" in feat_set,
+                )
+                used = enhanced_path if enhanced_path.exists() else src
+                enhanced_paths.append(used)
+                if enhanced_path.exists() and i < len(slices_b64):
+                    slices_b64[i] = base64.b64encode(enhanced_path.read_bytes()).decode()
+                if feats is not None:
+                    summaries.append(f"Image {i + 1} ({src.name}):\n{feats.summary()}")
+            except Exception as exc:  # never let preprocessing block diagnosis
+                logger.warning(f"Dermoscopy preprocessing failed for {src.name}, using raw: {exc}")
+                enhanced_paths.append(src)
+        if enhanced_paths:
+            llm_images = enhanced_paths
+            montage = enhanced_paths[0]
+            store.save_slices(job.job_id, slices_b64, raw_b64)
+        if summaries:
+            header = (f"{len(enhanced_paths)} dermoscopy images analysed; per-image metrics below.\n\n"
+                      if len(enhanced_paths) > 1 else "")
+            radiomics_summary = header + "\n\n".join(summaries)
 
     # Breast: CLAHE enhancement + mammographic density (computed on the original).
     elif module.cancer_type == "breast" and (feat_set & {"clahe", "breast_density"}):
@@ -212,15 +282,33 @@ async def _run_image_pipeline(
             except Exception as exc:
                 logger.warning(f"Mammographic density failed: {exc}")
 
+    # Skin with enhancement disabled: still send every uploaded view to the LLM.
+    if module.cancer_type == "skin" and not llm_images:
+        llm_images = image_files[:MAX_SKIN_IMAGES]
+
     # CNN backbone deep features (VGG16/19, ResNet50) — run on the (enhanced) image.
     cnn_summary = _run_cnn_backbones(job, montage, proc_dir, feat_set)
     if cnn_summary:
         radiomics_summary = (radiomics_summary + "\n\n" + cnn_summary).strip()
 
     # KNN classifier over CNN embeddings (needs a labelled reference set).
-    knn_summary = _run_knn(job, module.cancer_type, montage, feat_set)
+    # Query the RAW image: the reference index is embedded from raw reference
+    # images (build_index reads them un-enhanced), so embedding an enhanced query
+    # here would compare across two different distributions and weaken the cosine
+    # matches. CNN feature extraction above stays on the enhanced montage on
+    # purpose — that heatmap illustrates what the LLM is shown.
+    knn_summary = _run_knn(job, module.cancer_type, image_files[0], feat_set)
     if knn_summary:
         radiomics_summary = (radiomics_summary + "\n\n" + knn_summary).strip()
+
+    # Trained HAM10000 7-class classifier (skin only; needs a trained checkpoint).
+    if module.cancer_type == "skin":
+        # Classify the RAW uploaded views (not the enhanced montage): the model
+        # was trained on raw HAM10000 JPGs, and every lesion view is scored.
+        skin_clf_summary = _run_skin_classifier(
+            job, image_files[:MAX_SKIN_IMAGES], feat_set)
+        if skin_clf_summary:
+            radiomics_summary = (radiomics_summary + "\n\n" + skin_clf_summary).strip()
 
     _step(job, AnalysisStatus.ANALYZING, 60, "Retrieving guidelines (RAG) …")
     t0 = time.monotonic()
@@ -230,7 +318,7 @@ async def _run_image_pipeline(
     _step(job, AnalysisStatus.ANALYZING, 80, "Running LLM analysis …")
     t0 = time.monotonic()
     report: DiagnosticReport = await llm_client.analyze(
-        montage_path=montage,
+        montage_path=llm_images or montage,
         seg=seg,
         modality=modality,
         rag_context=rag_ctx,
@@ -238,6 +326,7 @@ async def _run_image_pipeline(
         patient_info=patient_info,
         module=module,
         model=model_tag,
+        applied_preprocessing=applied_preprocessing,
     )
     t["llm_s"] = round(time.monotonic() - t0, 2)
     report.study_id = study_id
@@ -419,6 +508,12 @@ async def list_features(current_user: User = Depends(get_current_user)):
 async def knn_status(cancer_type: str, current_user: User = Depends(get_current_user)):
     """Labelled-reference-set status for the KNN classifier."""
     return knn_classifier.status(cancer_type)
+
+
+@router.get("/skin-classifier/status")
+async def skin_classifier_status(current_user: User = Depends(get_current_user)):
+    """Trained HAM10000 skin-classifier availability (checkpoint present?)."""
+    return skin_classifier.status()
 
 
 @router.post("/knn/build/{cancer_type}")

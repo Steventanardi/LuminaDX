@@ -10,6 +10,7 @@ import {
   deepCopy, toLines, fromLines,
   SectionHeader, EditTextarea, EditInput,
   LesionCard, SignOffBadge, SignOffForm, RadiomicsSection,
+  DifferentialAssessment, EditableDifferential,
 } from './ReportSections'
 
 interface Props {
@@ -20,6 +21,21 @@ interface Props {
   currentSlice?: string
   isDark?: boolean
   currentUserName?: string
+}
+
+// The raw model output only surfaces when JSON parsing produced no structured
+// body. Strip the markdown fences the model often wraps output in and pretty-print
+// it when it's actually JSON, so the fallback is readable instead of one long
+// wrapped blob.
+function prettyModelOutput(raw: string): string {
+  let s = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+  const start = s.indexOf('{')
+  const end = s.lastIndexOf('}')
+  if (start !== -1 && end > start) {
+    try { return JSON.stringify(JSON.parse(s.slice(start, end + 1)), null, 2) }
+    catch { /* not valid JSON — show as-is */ }
+  }
+  return s
 }
 
 // ── Main panel ────────────────────────────────────────────────────────────────
@@ -249,6 +265,24 @@ export default function AIReportPanel({
         )}
       </div>
 
+      {/* ── Raw model output — fallback when JSON parsing produced no structured body ── */}
+      {cur.lesions.length === 0
+        && cur.differential_diagnosis.length === 0
+        && (cur.differential_assessment?.length ?? 0) === 0
+        && cur.recommendations.length === 0
+        && cur.raw_llm_output && (
+        <div className={TA}>
+          <SectionHeader title="Model Output" isDark={isDark} />
+          <p className={clsx('mt-1 text-[10px] leading-relaxed', isDark ? 'text-slate-500' : 'text-slate-400')}>
+            The model's response couldn't be organised into the structured report — showing its raw output:
+          </p>
+          <pre className={clsx('mt-2 text-[11px] font-mono whitespace-pre-wrap break-words rounded-xl px-3 py-2 border max-h-96 overflow-y-auto',
+            isDark ? 'bg-[#0d1219] border-[#1f2835] text-slate-400' : 'bg-slate-50 border-[#e2e8ee] text-slate-600')}>
+            {prettyModelOutput(cur.raw_llm_output)}
+          </pre>
+        </div>
+      )}
+
       {/* ── Lesions ── */}
       {cur.lesions.length > 0 && (
         <div className={TA}>
@@ -270,10 +304,20 @@ export default function AIReportPanel({
       )}
 
       {/* ── Differential Diagnosis ── */}
-      {(cur.differential_diagnosis.length > 0 || editMode) && (
+      {(cur.differential_diagnosis.length > 0 || (cur.differential_assessment?.length ?? 0) > 0 || editMode) && (
         <div className={TA}>
           <SectionHeader title={t('ai.differential')} isDark={isDark} />
-          {editMode ? (
+          {editMode && (editBuf.differential_assessment?.length ?? 0) > 0 ? (
+            <EditableDifferential
+              items={editBuf.differential_assessment!}
+              isDark={isDark}
+              onChange={v => updBuf({
+                differential_assessment: v,
+                differential_diagnosis: v
+                  .map(d => d.diagnosis + (d.likelihood ? ` (${d.likelihood})` : ''))
+                  .filter(sx => sx.trim()),
+              })} />
+          ) : editMode ? (
             <div className="mt-2">
               <p className={clsx('text-[10px] mb-1.5', isDark ? 'text-slate-500' : 'text-slate-400')}>
                 One diagnosis per line, most likely first
@@ -283,6 +327,8 @@ export default function AIReportPanel({
                 placeholder="HCC (most likely)&#10;Dysplastic nodule&#10;Metastasis"
                 onChange={v => updBuf({ differential_diagnosis: fromLines(v) })} />
             </div>
+          ) : (cur.differential_assessment?.length ?? 0) > 0 ? (
+            <DifferentialAssessment items={cur.differential_assessment!} isDark={isDark} />
           ) : (
             <ol className="mt-2.5 space-y-1.5">
               {cur.differential_diagnosis.map((d, i) => (
