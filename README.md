@@ -25,7 +25,7 @@
 
 <br/>
 
-<img src="Pictures/V2/ResultSkinCancer.png" alt="LuminaDx — Full diagnostic workstation" width="95%"/>
+<img src="Pictures/V2.5/MenuAfterAnalyzed.png" alt="LuminaDx — Full diagnostic workstation" width="95%"/>
 
 <br/>
 
@@ -49,17 +49,57 @@
 
 ---
 
-## 📸 Screenshots
+## 📸 Gallery & Features
 
+### 1. The Diagnostic Workstation
 <div align="center">
 
-| Analysed Lesion View | Structured AI Report (Part 1) |
+| Initial Upload & DICOM Viewer | Model & Feature Selection |
 |:---:|:---:|
-| <img src="Pictures/V2/Analayzed.png" width="100%"/> | <img src="Pictures/V2/AIReport1.png" width="100%"/> |
+| <img src="Pictures/V2.5/MenuAfterUpload.png" width="100%"/> | <img src="Pictures/V2.5/Analysis Features and Extraction.png" width="100%"/> |
 
-| Quantitative Radiomics | Model Attention & Recommendations |
+| LLM Model Picker (Local AI) | Real-time AI Pipeline Processing |
 |:---:|:---:|
-| <img src="Pictures/V2/AIReport2.png" width="100%"/> | <img src="Pictures/V2/AIReport3.png" width="100%"/> |
+| <img src="Pictures/V2.5/LLMPicker.png" width="100%"/> | <img src="Pictures/V2.5/Analysis in Progress.png" width="100%"/> |
+
+</div>
+
+### 2. Multi-Modal Analysis View
+<div align="center">
+
+| Original Image | TotalSegmentator Mask Overlay |
+|:---:|:---:|
+| <img src="Pictures/V2.5/Analyzed1.png" width="100%"/> | <img src="Pictures/V2.5/Analyzed2.png" width="100%"/> |
+
+| Image Enhancement (CLAHE) | Extracted Radiomic Features |
+|:---:|:---:|
+| <img src="Pictures/V2.5/Analyzed3.png" width="100%"/> | <img src="Pictures/V2.5/Analyzed4.png" width="100%"/> |
+
+</div>
+
+### 3. AI-Generated Clinical Report & Guidelines
+<div align="center">
+
+| Structured AI Report | Clinical Findings |
+|:---:|:---:|
+| <img src="Pictures/V2.5/AIReport.png" width="100%"/> | <img src="Pictures/V2.5/Findings1.png" width="100%"/> |
+
+| Visual Evidence & Radiomics | Radiologist Sign-off Gate |
+|:---:|:---:|
+| <img src="Pictures/V2.5/Evidence.png" width="100%"/> | <img src="Pictures/V2.5/Approved.png" width="100%"/> |
+
+</div>
+
+### 4. Privacy & Administration (100% Local)
+<div align="center">
+
+| Admin Dashboard (Dark) | Admin Dashboard (Light) |
+|:---:|:---:|
+| <img src="Pictures/V2.5/Dashboard.png" width="100%"/> | <img src="Pictures/V2.5/DashboardLightTheme.png" width="100%"/> |
+
+| Role-Based Access Control | Local Processing Logs |
+|:---:|:---:|
+| <img src="Pictures/V2.5/UserManagementDashboard.png" width="100%"/> | <img src="Pictures/V2.5/TerminalWhileAnalyzing.png" width="100%"/> |
 
 </div>
 
@@ -97,7 +137,7 @@ graph TB
         KNN["KNN Classifier<br/>+ HAM10000 Skin Classifier"]
         PREPROCESS["Image Preprocessing<br/>CLAHE · Hair Removal · Colour Constancy"]
         RAG_ENGINE["RAG Engine<br/>ChromaDB + LangChain + nomic-embed-text"]
-        VLM["Vision-Language Model<br/>MedGemma · Qwen2.5-VL · MiniCPM-V"]
+        VLM["Vision-Language Model<br/>MedGemma 1.5 · Gemma 3 · Llama 3.2 Vision"]
         PARSER["Report Parser<br/>Per-Cancer Structured JSON"]
     end
 
@@ -192,7 +232,7 @@ The diagnostic pipeline follows a **6-stage sequential architecture** where each
 <tr><td>PyRadiomics</td><td>3.x</td><td>Quantitative radiomic feature extraction</td></tr>
 <tr><td>PyTorch</td><td>2.x (CUDA 12.1)</td><td>Deep learning runtime (CNN features, classifiers)</td></tr>
 <tr><td>LangChain + ChromaDB</td><td>0.3+ / 0.5+</td><td>RAG pipeline & vector store</td></tr>
-<tr><td>Ollama</td><td>Latest</td><td>Local LLM server (MedGemma, Qwen2.5-VL, MiniCPM-V)</td></tr>
+<tr><td>Ollama</td><td>Latest</td><td>Local LLM server (MedGemma 1.5, Gemma 3, Llama 3.2 Vision)</td></tr>
 <tr><td rowspan="3"><strong>Medical Imaging</strong></td>
     <td>pydicom</td><td>3.0+</td><td>DICOM file parsing & de-identification</td></tr>
 <tr><td>SimpleITK</td><td>2.4+</td><td>Medical image processing</td></tr>
@@ -291,15 +331,15 @@ Install [Ollama](https://ollama.com/) and start the server, then pull the requir
 ollama serve
 
 # Pull the default medical VLM
-ollama pull medgemma:4b-it-q8_0
+ollama pull medgemma1.5:4b
 
 # Pull the embedding model for RAG
 ollama pull nomic-embed-text
 ```
 
-Depending on the cancer types you plan to analyse, also pull the recommended models:
-- `ollama pull qwen2.5vl:7b` — Default for Lung and Colorectal
-- `ollama pull minicpm-v:8b` — Default for Skin and Breast
+All cancer types default to MedGemma 1.5. You can optionally pull other models for comparison:
+- `ollama pull gemma3:4b` — General VLM fallback
+- `ollama pull llama3.2-vision:11b` — Powerful vision model (requires more VRAM)
 
 ### 4. Database & Admin Setup
 
@@ -482,7 +522,7 @@ classDiagram
 
 ### Vision-Language Model
 - Multi-modal inference: montage PNG + structured text prompt
-- Default models are configured per cancer type (see Model Reference)
+- Default model is `medgemma1.5:4b` for all cancer types, with others available for comparison (see Model Reference)
 - Swappable models via `.env` or in-app UI model picker dropdown
 - Robust JSON parsing with multi-layer repair: markdown fence stripping, comment removal, trailing comma cleanup, invalid escape correction
 
@@ -627,20 +667,17 @@ LuminaDx/
 LuminaDx supports swappable vision-language models via Ollama. The model picker in the UI lets you switch models per-analysis for comparison.
 
 **Default models per cancer type:**
-- **Liver:** `medgemma:4b-it-q8_0`
-- **Lung & Colorectal:** `qwen2.5vl:7b`
-- **Breast & Skin:** `minicpm-v:8b`
+- **All Cancers:** `medgemma1.5:4b`
 
 Override the global default by setting `LLM_MODEL` in `backend/.env`.
 
 | Model | Env Value | VRAM | Best For |
 |:---|:---|:---:|:---|
-| **MedGemma 4B** | `medgemma:4b-it-q8_0` | ~6 GB | Medical imaging, fast inference |
-| MiniCPM-V 8B | `minicpm-v:8b` | ~5.5 GB | Dermoscopy, mammography |
-| Qwen2.5-VL 7B | `qwen2.5vl:7b` | ~7 GB | Structured JSON, general radiology |
-| LLaVA 7B | `llava:7b` | ~4.7 GB | Widely tested in medical research |
+| **MedGemma 1.5 4B** | `medgemma1.5:4b` | ~3.3 GB | Medical imaging, fast inference |
+| **Gemma 3 4B** | `gemma3:4b` | ~3.3 GB | General VLM fallback |
+| **Llama 3.2 Vision 11B**| `llama3.2-vision:11b` | ~7.8 GB | High performance, requires more VRAM |
 
-> 💡 **8 GB GPU users:** Use `medgemma:4b-it-q8_0` or `qwen2.5vl:3b`. Segmentation runs first and releases VRAM before the LLM loads.
+> 💡 **8 GB GPU users:** Use `medgemma1.5:4b` or `gemma3:4b`. Segmentation runs first and releases VRAM before the LLM loads.
 
 ### Feature & Extraction Catalog
 
